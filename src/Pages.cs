@@ -21,6 +21,18 @@ namespace WorkDesk
         private string savedSummary;
         private SummaryEditor summaryInput;
         private StackPanel historyRows;
+        private DatePicker summaryPicker;
+        private Button fullScreenButton;
+        private Button selectExportButton;
+        private Grid summaryLayout;
+        private Border historyCard;
+        private ScrollViewer historyScroll;
+        private bool summaryFullScreen;
+        private WindowState windowedState;
+        private WindowStyle windowedStyle;
+        private ResizeMode windowedResizeMode;
+        private GridLength sidebarWidth;
+        private double contentMaxWidth;
 
         private void InitializePages()
         {
@@ -38,6 +50,10 @@ namespace WorkDesk
             Element<Button>("CopyPlan").Click += delegate { CopyMarkdown(MarkdownExport.Plan(state, DateTimeOffset.Now)); };
             Element<Button>("ExportPlan").Click += delegate {
                 ExportMarkdown("事项清单-" + WorkState.PeriodKey(DateTime.Today, false), MarkdownExport.Plan(state, DateTimeOffset.Now));
+            };
+            var pageScroll = Element<ScrollViewer>("PageScroll");
+            pageScroll.ScrollChanged += delegate(object sender, ScrollChangedEventArgs e) {
+                if (summaryFullScreen && ReferenceEquals(e.OriginalSource, pageScroll) && e.ViewportHeightChange != 0) SizeSummaryLayout();
             };
         }
 
@@ -86,6 +102,7 @@ namespace WorkDesk
 
         private void SetPage(DeskPage next, string title, UIElement content)
         {
+            if (next != DeskPage.Summary && summaryFullScreen) SetSummaryFullScreen(false);
             page = next;
             Element<TextBlock>("PageTitle").Text = title;
             Element<Button>("DeskNav").Style = Ui.Style(next == DeskPage.Desk ? "ActiveNav" : "Nav");
@@ -97,6 +114,52 @@ namespace WorkDesk
             other.Visibility = content == null ? Visibility.Collapsed : Visibility.Visible;
             Element<ScrollViewer>("PageScroll").ScrollToTop();
             if (!store.Recovered) Banner("");
+            if (next == DeskPage.Summary) SizeSummaryLayout();
+        }
+
+        private void SetSummaryFullScreen(bool active)
+        {
+            if (summaryFullScreen == active || page != DeskPage.Summary) return;
+            summaryFullScreen = active;
+            var content = Element<StackPanel>("PageContent");
+            if (active)
+            {
+                windowedState = WindowState;
+                windowedStyle = WindowStyle;
+                windowedResizeMode = ResizeMode;
+                sidebarWidth = shell.ColumnDefinitions[0].Width;
+                contentMaxWidth = content.MaxWidth;
+                WindowStyle = WindowStyle.None;
+                ResizeMode = ResizeMode.NoResize;
+                WindowState = WindowState.Maximized;
+                shell.ColumnDefinitions[0].Width = new GridLength(0);
+                content.MaxWidth = Double.PositiveInfinity;
+            }
+            else
+            {
+                WindowStyle = windowedStyle;
+                ResizeMode = windowedResizeMode;
+                WindowState = windowedState;
+                shell.ColumnDefinitions[0].Width = sidebarWidth;
+                content.MaxWidth = contentMaxWidth;
+            }
+            var visibility = active ? Visibility.Collapsed : Visibility.Visible;
+            Element<Border>("Sidebar").Visibility = visibility;
+            Element<DockPanel>("PageHeader").Visibility = visibility;
+            Element<ScrollViewer>("PageScroll").ScrollToTop();
+            SizeSummaryLayout();
+        }
+
+        private void SizeSummaryLayout()
+        {
+            fullScreenButton.Content = summaryFullScreen ? "退出全屏" : "全屏";
+            summaryInput.MaxHeight = summaryFullScreen ? Double.PositiveInfinity : 410;
+            summaryLayout.ColumnDefinitions[2].Width = summaryFullScreen ? new GridLength(295) : new GridLength(1, GridUnitType.Star);
+            historyCard.VerticalAlignment = summaryFullScreen ? VerticalAlignment.Stretch : VerticalAlignment.Top;
+            historyScroll.MaxHeight = summaryFullScreen ? Double.PositiveInfinity : 350;
+            var margin = Element<StackPanel>("PageContent").Margin;
+            var viewport = Element<ScrollViewer>("PageScroll").ViewportHeight;
+            summaryLayout.Height = summaryFullScreen ? Math.Max(480, viewport - margin.Top - margin.Bottom) : Double.NaN;
         }
 
         internal bool HasUnsavedSummary
@@ -114,26 +177,34 @@ namespace WorkDesk
 
         private UIElement BuildSummaryPage()
         {
-            var section = new Grid();
-            section.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2.15, GridUnitType.Star) });
-            section.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(14) });
-            section.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 181 });
-            var form = new StackPanel();
-            var tabs = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 15) };
+            summaryLayout = new Grid();
+            summaryLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2.15, GridUnitType.Star) });
+            summaryLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(14) });
+            summaryLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 181 });
+            var form = new DockPanel();
+            var editorHeader = new StackPanel();
+            var tabBar = new DockPanel { Margin = new Thickness(0, 0, 0, 15) };
+            fullScreenButton = Ui.Button("全屏", delegate { SetSummaryFullScreen(!summaryFullScreen); });
+            fullScreenButton.ToolTip = "F11 切换全屏 · Esc 退出全屏";
+            DockPanel.SetDock(fullScreenButton, Dock.Right);
+            tabBar.Children.Add(fullScreenButton);
+            var tabs = new StackPanel { Orientation = Orientation.Horizontal };
             var daily = Ui.Button("日报", delegate { OpenSummary(summaryAnchor, false); }, summaryWeekly ? null : "Quiet");
             var weekly = Ui.Button("周报", delegate { OpenSummary(summaryAnchor, true); }, summaryWeekly ? "Quiet" : null);
             daily.Margin = new Thickness(0, 0, 7, 0);
             tabs.Children.Add(daily);
             tabs.Children.Add(weekly);
-            form.Children.Add(tabs);
+            tabBar.Children.Add(tabs);
+            editorHeader.Children.Add(tabBar);
 
             var period = Ui.Text(MarkdownExport.SummaryTitle(summaryWeekly, summaryDate), "SectionTitle");
             period.TextWrapping = TextWrapping.Wrap;
-            form.Children.Add(period);
+            editorHeader.Children.Add(period);
             var date = new DatePicker {
                 SelectedDate = summaryAnchor, Width = 154, HorizontalAlignment = HorizontalAlignment.Left,
                 DisplayDateStart = new DateTime(1900, 1, 1), DisplayDateEnd = new DateTime(9998, 12, 31)
             };
+            summaryPicker = date;
             bool restoringDate = false;
             date.SelectedDateChanged += delegate {
                 if (restoringDate) return;
@@ -144,7 +215,7 @@ namespace WorkDesk
                     restoringDate = false;
                 }
             };
-            Ui.Label(form, summaryWeekly ? "选择周内任一天" : "总结日期", date);
+            Ui.Label(editorHeader, summaryWeekly ? "选择周内任一天" : "总结日期", date);
 
             var prior = state.FindSummary(summaryDate, summaryWeekly);
             summaryInput = new SummaryEditor(prior, Banner) { Style = Ui.Style("SummarySurface") };
@@ -157,8 +228,9 @@ namespace WorkDesk
             toolbar.Children.Add(paste);
             toolbar.Children.Add(new TextBlock { Text = "总结正文", FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
             AutomationProperties.SetName(summaryInput, "总结正文");
-            form.Children.Add(toolbar);
-            form.Children.Add(summaryInput);
+            editorHeader.Children.Add(toolbar);
+            DockPanel.SetDock(editorHeader, Dock.Top);
+            form.Children.Add(editorHeader);
             var actions = new WrapPanel { Margin = new Thickness(0, 11, 0, 0) };
             var save = Ui.Button("保存总结", delegate { SaveSummary(); }, "Primary");
             var copy = Ui.Button("复制 Markdown", delegate {
@@ -168,19 +240,22 @@ namespace WorkDesk
                 CopyMarkdown(MarkdownExport.WithImages(MarkdownExport.Summary(summaryWeekly, summaryDate, text), SummaryFilename(), images),
                     images.Count == 0 ? "已复制 Markdown。" : "已复制 Markdown。分享时请将导出的图片目录与正文放在一起。");
             });
-            var export = Ui.Button("导出 Markdown", delegate {
+            var export = Ui.Button("导出当前篇", delegate {
                 var images = new List<SummaryImage>();
                 string text = summaryInput.ReadMarkdown(images);
                 if (String.IsNullOrWhiteSpace(text)) { Banner("请先填写总结正文或粘贴图片。"); return; }
                 string markdown = MarkdownExport.Summary(summaryWeekly, summaryDate, text);
                 ExportFile(SummaryFilename(), "Markdown 文件 (*.md)|*.md", dialog => MarkdownExport.WriteWithImages(store, dialog.FileName, markdown, images));
             });
+            export.ToolTip = "将当前编辑的日报或周报导出为 Markdown";
             foreach (var button in new[] { save, copy, export })
             {
                 button.Margin = new Thickness(0, 0, 6, 5);
                 actions.Children.Add(button);
             }
+            DockPanel.SetDock(actions, Dock.Bottom);
             form.Children.Add(actions);
+            form.Children.Add(summaryInput);
             form.PreviewKeyDown += delegate(object sender, KeyEventArgs e) {
                 if (e.Key == Key.S && Keyboard.Modifiers == ModifierKeys.Control)
                 {
@@ -188,18 +263,35 @@ namespace WorkDesk
                     SaveSummary();
                 }
             };
-            section.Children.Add(Ui.Card(form));
+            summaryLayout.Children.Add(Ui.Card(form));
 
-            var history = new StackPanel();
-            history.Children.Add(Ui.Text(summaryWeekly ? "周报历史" : "日报历史", "SectionTitle"));
+            var history = new DockPanel();
+            var historyHeader = new StackPanel();
+            historyHeader.Children.Add(Ui.Text(summaryWeekly ? "周报历史" : "日报历史", "SectionTitle"));
+            selectExportButton = Ui.Button("勾选导出", delegate { ExportSelectedSummaries(); });
+            selectExportButton.HorizontalAlignment = HorizontalAlignment.Left;
+            selectExportButton.Padding = new Thickness(9, 5, 9, 5);
+            selectExportButton.Margin = new Thickness(0, 7, 0, 0);
+            historyHeader.Children.Add(selectExportButton);
+            DockPanel.SetDock(historyHeader, Dock.Top);
+            history.Children.Add(historyHeader);
             historyRows = new StackPanel();
-            history.Children.Add(new ScrollViewer { Content = historyRows, MaxHeight = 350, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 9, 0, 0) });
-            var historyCard = Ui.Card(history);
-            historyCard.VerticalAlignment = VerticalAlignment.Top;
+            historyScroll = new ScrollViewer { Content = historyRows, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 9, 0, 0) };
+            history.Children.Add(historyScroll);
+            historyCard = Ui.Card(history);
             Grid.SetColumn(historyCard, 2);
-            section.Children.Add(historyCard);
+            summaryLayout.Children.Add(historyCard);
             RefreshHistory();
-            return section;
+            return summaryLayout;
+        }
+
+        private void ExportSelectedSummaries()
+        {
+            var dialog = new SummaryExportDialog(this, state.Summaries);
+            if (dialog.ShowDialog() != true) return;
+            var reports = dialog.SelectedReports;
+            ExportFile("工作总结-" + WorkState.PeriodKey(DateTime.Today, false), "Markdown 文件 (*.md)|*.md",
+                file => MarkdownExport.WriteSummaries(store, file.FileName, reports));
         }
 
         private string SummaryFilename() { return (summaryWeekly ? "周报-" : "日报-") + WorkState.PeriodKey(summaryDate, summaryWeekly); }
@@ -221,6 +313,7 @@ namespace WorkDesk
 
         private void RefreshHistory()
         {
+            selectExportButton.IsEnabled = state.Summaries.Count != 0;
             historyRows.Children.Clear();
             foreach (var summary in state.Summaries.Where(s => s.Weekly == summaryWeekly).OrderByDescending(s => s.Period))
             {
@@ -340,7 +433,7 @@ namespace WorkDesk
                 "完整数据备份 (*.json)|*.json|可阅读的 Markdown (*.md)|*.md", dialog => {
                     if (dialog.FilterIndex == 1) store.BackUp(dialog.FileName, state);
                     else MarkdownExport.WriteWithImages(store, dialog.FileName, MarkdownExport.Archive(state, DateTimeOffset.Now),
-                        state.Summaries.Where(summary => summary.Images != null).SelectMany(summary => summary.Images));
+                        MarkdownExport.ReportImages(state.Summaries));
                 });
         }
 

@@ -28,14 +28,35 @@ namespace WorkDesk
             output.Append(WorkState.PeriodKey(now.Date, false)).Append("\n\n## 事项清单\n\n");
             AppendPlan(output, state, now, "###");
             output.Append("## 工作总结\n\n");
-            foreach (var summary in state.Summaries.OrderBy(s => s.Weekly).ThenByDescending(s => s.Period))
-            {
-                var date = DateTime.ParseExact(summary.Period, "yyyy-MM-dd", CultureInfo.InvariantCulture);
-                output.Append("### ").Append(SummaryTitle(summary.Weekly, date)).Append("\n\n")
-                    .Append(WithFinalNewline(summary.Text)).Append('\n');
-            }
+            AppendSummaries(output, state.Summaries.OrderBy(s => s.Weekly).ThenByDescending(s => s.Period), "###");
             if (state.Summaries.Count == 0) output.Append("暂无总结。\n");
             return output.ToString();
+        }
+
+        public static void WriteSummaries(StateStore store, string file, WorkSummary[] reports)
+        {
+            if (reports.Length == 0) return;
+            var output = new StringBuilder();
+            if (reports.Length > 1) output.Append("# 工作总结\n\n");
+            AppendSummaries(output, reports.OrderBy(s => s.Weekly).ThenBy(s => s.Period), reports.Length == 1 ? "#" : "##");
+            WriteWithImages(store, file, output.ToString(), ReportImages(reports));
+        }
+
+        public static IEnumerable<SummaryImage> ReportImages(IEnumerable<WorkSummary> reports)
+        {
+            return reports.Where(summary => summary.Images != null).SelectMany(summary => summary.Images);
+        }
+
+        public static string ReportTitle(WorkSummary summary)
+        {
+            return SummaryTitle(summary.Weekly, DateTime.ParseExact(summary.Period, "yyyy-MM-dd", CultureInfo.InvariantCulture));
+        }
+
+        private static void AppendSummaries(StringBuilder output, IEnumerable<WorkSummary> summaries, string heading)
+        {
+            foreach (var summary in summaries)
+                output.Append(heading).Append(' ').Append(ReportTitle(summary)).Append("\n\n")
+                    .Append(WithFinalNewline(summary.Text)).Append('\n');
         }
 
         public static string SummaryTitle(bool weekly, DateTime date)
@@ -88,7 +109,8 @@ namespace WorkDesk
 
         private static string ImageFolder(string file, IEnumerable<string> ids)
         {
-            byte[] bytes = Encoding.ASCII.GetBytes(String.Concat(ids.OrderBy(id => id, StringComparer.Ordinal)));
+            // Use fresh folders for exports whose old copies may still contain transparent screenshots.
+            byte[] bytes = Encoding.ASCII.GetBytes("WorkDesk PNG\n" + String.Concat(ids.OrderBy(id => id, StringComparer.Ordinal)));
             using (var hash = SHA256.Create())
                 return Path.GetFileNameWithoutExtension(file) + "-图片-" + BitConverter.ToString(hash.ComputeHash(bytes), 0, 6).Replace("-", "").ToLowerInvariant();
         }

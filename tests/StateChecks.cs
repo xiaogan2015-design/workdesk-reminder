@@ -1,6 +1,8 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using WorkDesk;
 
 internal static class StateChecks
@@ -13,6 +15,7 @@ internal static class StateChecks
         assertions++;
     }
 
+    [STAThread]
     public static int Main()
     {
         try { Run(); return 0; }
@@ -89,12 +92,15 @@ internal static class StateChecks
         var backup = new StateStore(Path.Combine(folder, "backup"));
         string markdownFile = Path.Combine(folder, "archive.md");
         string picturesFile = Path.Combine(folder, "汇总 示例.md");
+        string selectedFile = Path.Combine(folder, "selected.md");
         var image = new SummaryImage {
             Id = Guid.NewGuid().ToString("N"),
             Png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9a8AAAAASUVORK5CYII="
         };
         string picturesDirectory = null;
         string pngFile = null;
+        string selectedDirectory = null;
+        string selectedPng = null;
         try
         {
             Check(store.Load().Tasks.Count == 0, "Fresh installation");
@@ -129,6 +135,31 @@ internal static class StateChecks
                 "Markdown exports copy image bytes with portable relative links");
             MarkdownExport.WriteWithImages(store, picturesFile, illustrated, imageBackup.Images);
             Check(File.ReadAllText(picturesFile).Contains(link), "Re-exporting Markdown safely reuses the same image");
+            var oldPixels = new byte[] { 12, 56, 209, 0, 211, 100, 7, 0 };
+            var legacyBitmap = BitmapSource.Create(2, 1, 96, 96, PixelFormats.Bgra32, null, oldPixels, 8);
+            var oldImage = new SummaryImage { Id = Guid.NewGuid().ToString("N"), Png = SummaryImageCodec.Encode(legacyBitmap) };
+            var legacyDay = today.AddDays(-1);
+            state.SetSummary(legacyDay, false, "需要恢复的截图\n" + oldImage.Marker, now.UtcDateTime,
+                new System.Collections.Generic.List<SummaryImage> { oldImage });
+            state.SetSummary(today.AddDays(-2), false, "没有勾选的总结", now.UtcDateTime);
+            store.Save(state);
+            var restored = store.Load();
+            var recoveredImage = restored.FindSummary(legacyDay, false).Images.Single();
+            Check(RgbAndAlpha(recoveredImage).SequenceEqual(new byte[] { 12, 56, 209, 255, 211, 100, 7, 255 }),
+                "Existing screenshots with zero alpha recover their original colors.");
+            var transparent = BitmapSource.Create(2, 1, 96, 96, PixelFormats.Bgra32, null,
+                new byte[] { 12, 56, 209, 0, 211, 100, 7, 127 }, 8);
+            Check(ReferenceEquals(transparent, SummaryImageCodec.RestoreScreenshotOpacity(transparent)),
+                "Intentional transparency remains unchanged.");
+            MarkdownExport.WriteSummaries(store, selectedFile, new[] { restored.FindSummary(legacyDay, false), restored.FindSummary(today, true) });
+            selectedDirectory = Directory.GetDirectories(folder, "selected-图片-*").Single();
+            selectedPng = Path.Combine(selectedDirectory, oldImage.Id + ".png");
+            string selectedText = File.ReadAllText(selectedFile);
+            Check(selectedText.Contains("# 工作总结") && selectedText.Contains("## 日报 · 2026-11-26") &&
+                selectedText.Contains("## 周报 · 2026-11-23") && !selectedText.Contains("2026-11-25") && !selectedText.Contains(image.Id),
+                "Selected export merges only checked reports.");
+            Check(File.ReadAllBytes(selectedPng).SequenceEqual(recoveredImage.ReadPng()) && Directory.GetFiles(selectedDirectory).Length == 1,
+                "Selected export includes only the selected image, with repaired opacity.");
             try { MarkdownExport.Write(store, store.FilePath, archive); throw new Exception("The live file cannot be exported over."); }
             catch (IOException) { Check(store.Load().Tasks.Count == 3, "Export cannot replace the live state file"); }
         }
@@ -139,12 +170,27 @@ internal static class StateChecks
             File.Delete(store.FilePath + ".tmp");
             File.Delete(markdownFile);
             File.Delete(picturesFile);
+            File.Delete(selectedFile);
             if (pngFile != null) File.Delete(pngFile);
+            if (selectedPng != null) File.Delete(selectedPng);
             if (Directory.Exists(picturesDirectory)) Directory.Delete(picturesDirectory);
+            if (Directory.Exists(selectedDirectory)) Directory.Delete(selectedDirectory);
             File.Delete(backup.FilePath);
             if (Directory.Exists(Path.GetDirectoryName(backup.FilePath))) Directory.Delete(Path.GetDirectoryName(backup.FilePath));
             if (Directory.Exists(folder)) Directory.Delete(folder);
         }
         Console.WriteLine("Passed {0} state and reminder checks.", assertions);
+    }
+
+    private static byte[] RgbAndAlpha(SummaryImage image)
+    {
+        using (var stream = new MemoryStream(image.ReadPng()))
+        {
+            var bitmap = new PngBitmapDecoder(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad).Frames[0];
+            var bgra = new FormatConvertedBitmap(bitmap, PixelFormats.Bgra32, null, 0);
+            var pixels = new byte[bgra.PixelWidth * bgra.PixelHeight * 4];
+            bgra.CopyPixels(pixels, bgra.PixelWidth * 4, 0);
+            return pixels;
+        }
     }
 }

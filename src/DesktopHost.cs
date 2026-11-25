@@ -174,6 +174,24 @@ namespace WorkDesk
 
         protected override void OnRenderImageMargin(Forms.ToolStripRenderEventArgs e) { }
 
+        protected override void OnRenderItemText(Forms.ToolStripItemTextRenderEventArgs e)
+        {
+            var bounds = e.TextRectangle;
+            bounds.Y = 0;
+            bounds.Height = e.Item.Height;
+            var alignment = (e.TextFormat & ~Forms.TextFormatFlags.Bottom) |
+                Forms.TextFormatFlags.VerticalCenter | Forms.TextFormatFlags.SingleLine;
+            Forms.TextRenderer.DrawText(e.Graphics, e.Text, e.TextFont, bounds, e.Item.ForeColor, alignment);
+        }
+
+        protected override void OnRenderItemImage(Forms.ToolStripItemImageRenderEventArgs e)
+        {
+            if (e.Image == null) return;
+            var bounds = e.ImageRectangle;
+            bounds.Y = (e.Item.Height - bounds.Height) / 2;
+            e.Graphics.DrawImage(e.Image, bounds);
+        }
+
         protected override void OnRenderToolStripBorder(Forms.ToolStripRenderEventArgs e)
         {
             using (var pen = new Drawing.Pen(Drawing.ColorTranslator.FromHtml("#DFD7F1")))

@@ -39,7 +39,12 @@ namespace WorkDesk
             Element<Button>("NewTask").Click += delegate { EditTask(null); };
             InitializePages();
             PreviewKeyDown += delegate(object sender, KeyEventArgs e) {
-                if (e.Key == Key.N && Keyboard.Modifiers == ModifierKeys.Control && page == DeskPage.Desk && taskEditor == null)
+                if (page == DeskPage.Summary && (e.Key == Key.F11 || (e.Key == Key.Escape && summaryFullScreen && !summaryPicker.IsDropDownOpen)))
+                {
+                    e.Handled = true;
+                    SetSummaryFullScreen(!summaryFullScreen);
+                }
+                else if (e.Key == Key.N && Keyboard.Modifiers == ModifierKeys.Control && page == DeskPage.Desk && taskEditor == null)
                 {
                     e.Handled = true;
                     EditTask(null);
@@ -57,7 +62,7 @@ namespace WorkDesk
         {
             if (taskEditor != null) { taskEditor.Activate(); return; }
             if (!IsVisible) Show();
-            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+            if (WindowState == WindowState.Minimized) WindowState = summaryFullScreen ? WindowState.Maximized : WindowState.Normal;
             Activate();
         }
 

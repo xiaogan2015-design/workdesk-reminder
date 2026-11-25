@@ -112,6 +112,8 @@ namespace WorkDesk
             var state = store.Load();
             state.Settings = settings;
             state.Tasks[0].SetSchedule(DateTime.UtcNow.AddMinutes(-1), 0);
+            var yesterday = DateTime.Today.AddDays(-1);
+            state.SetSummary(yesterday, false, "昨天已存的记录", DateTime.UtcNow);
             store.Save(state);
             var app = Application.Current;
             var window = new MainWindow(store, store.Load());
@@ -140,9 +142,10 @@ namespace WorkDesk
                 var plain = "    已完成核对\n\n- 待同步";
                 SetBody(daily, plain);
                 Check(daily.ReadMarkdown() == plain, "The inline editor preserves Markdown indentation and paragraphs.");
-                var pixels = new byte[640 * 360 * 3];
+                var pixels = new byte[640 * 360 * 4];
                 new Random(41).NextBytes(pixels);
-                var picture = BitmapSource.Create(640, 360, 96, 96, PixelFormats.Bgr24, null, pixels, 640 * 3);
+                for (int i = 3; i < pixels.Length; i += 4) pixels[i] = 0;
+                var picture = BitmapSource.Create(640, 360, 96, 96, PixelFormats.Bgra32, null, pixels, 640 * 4);
                 daily.CaretPosition = daily.Document.ContentEnd.GetInsertionPosition(LogicalDirection.Backward);
                 daily.InsertImage(picture);
                 var images = new List<SummaryImage>();
@@ -152,6 +155,15 @@ namespace WorkDesk
                 daily.Redo();
                 Check(daily.ReadMarkdown() == withImage, "Redo restores the inline image and its attachment.");
                 Check(window.HasUnsavedSummary, "New summary content is tracked as a draft.");
+                Click(Descendants<Button>(window).Single(b => b.Content as string == "全屏"));
+                window.UpdateLayout();
+                Check(window.WindowState == WindowState.Maximized && window.WindowStyle == WindowStyle.None &&
+                    window.Element<Border>("Sidebar").Visibility == Visibility.Collapsed && daily.ActualHeight > daily.MinHeight,
+                    "Full-screen mode maximizes the window and expands the editor.");
+                Check(ReferenceEquals(daily, Find<SummaryEditor>(window, "总结正文")) && daily.ReadMarkdown() == withImage,
+                    "Full-screen mode retains the open draft and image.");
+                Click(Descendants<Button>(window).Single(b => b.Content as string == "退出全屏"));
+                Check(window.WindowState == WindowState.Normal && window.WindowStyle != WindowStyle.None, "Leaving full screen restores the original window.");
                 window.Close();
                 window.ShowWorkspace();
                 Check(daily.ReadMarkdown() == withImage && window.HasUnsavedSummary, "Hiding to the tray preserves the unsaved summary and its image.");
@@ -159,6 +171,18 @@ namespace WorkDesk
                 var savedDaily = store.Load().FindSummary(DateTime.Today, false);
                 Check(!window.HasUnsavedSummary && savedDaily.Text == withImage && savedDaily.Images[0].Png == images[0].Png,
                     "The saved daily summary retains its formatting and original image data.");
+                using (var stream = new MemoryStream(savedDaily.Images[0].ReadPng()))
+                {
+                    var image = new PngBitmapDecoder(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad).Frames[0];
+                    var sample = new byte[4];
+                    new FormatConvertedBitmap(image, PixelFormats.Bgra32, null, 0).CopyPixels(new Int32Rect(0, 0, 1, 1), sample, 4, 0);
+                    Check(sample.Take(3).SequenceEqual(pixels.Take(3)) && sample[3] == 255, "New screenshots retain color and become visible when saved.");
+                }
+                Click(Descendants<Button>(window).Single(b => b.Content as string == "全屏"));
+                Click(Descendants<Button>(window).Single(b => b.Content as string == WorkState.PeriodKey(yesterday, false)));
+                Check(window.WindowStyle == WindowStyle.None && Find<SummaryEditor>(window, "总结正文").ReadMarkdown() == "昨天已存的记录",
+                    "History remains available when making an old report full-screen.");
+                Click(Descendants<Button>(window).Single(b => b.Content as string == "退出全屏"));
                 Click(Descendants<Button>(popup).Single(b => (string)b.Content == "写周报"));
                 Check(!popup.IsVisible && Find<DatePicker>(window, "选择周内任一天").SelectedDate == DateTime.Today,
                     "The weekly popup opens the corresponding week after the daily reminder.");
@@ -176,6 +200,7 @@ namespace WorkDesk
                 Check(reopened.ReadMarkdown() == plain && window.HasUnsavedSummary, "The image menu removes just that image.");
                 Click(Descendants<Button>(window).Single(b => b.Content as string == "保存总结"));
                 Check(store.Load().FindSummary(DateTime.Today, false).Images == null, "Saving after removal drops the unused image from the report.");
+                CheckExportDialog(window, store.Load().Summaries);
                 Click(window.Element<Button>("SettingsNav"));
                 window.UpdateLayout();
                 var weekday = Find<ComboBox>(window, "周报星期");
@@ -195,6 +220,33 @@ namespace WorkDesk
                 Check(!app.Windows.OfType<ReminderPopup>().Any(), "The same task and summary reminders are not duplicated.");
             }
             window.Close();
+        }
+
+        private static void CheckExportDialog(MainWindow window, IEnumerable<WorkSummary> reports)
+        {
+            var dialog = new SummaryExportDialog(window, reports);
+            Exception failure = null;
+            window.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(delegate {
+                try
+                {
+                    var boxes = Descendants<CheckBox>(dialog).ToArray();
+                    var export = Descendants<Button>(dialog).Single(button => button.Content as string == "导出 Markdown");
+                    Check(boxes.Length == 3 && !export.IsEnabled, "Export opens with all saved reports across both types unselected.");
+                    Click(Descendants<Button>(dialog).Single(button => button.Content as string == "全选"));
+                    Check(boxes.All(box => box.IsChecked == true) && export.IsEnabled, "All saved reports can be selected.");
+                    Click(Descendants<Button>(dialog).Single(button => button.Content as string == "清空勾选"));
+                    Check(boxes.All(box => box.IsChecked == false) && !export.IsEnabled, "Clearing selection prevents an empty export.");
+                    boxes[0].IsChecked = true;
+                    boxes[2].IsChecked = true;
+                    Click(export);
+                }
+                catch (Exception ex) { failure = ex; }
+                finally { if (dialog.IsVisible) dialog.Close(); }
+            }));
+            bool accepted = dialog.ShowDialog() == true;
+            if (failure != null) throw new InvalidOperationException("Selected export dialog check failed.", failure);
+            Check(accepted && dialog.SelectedReports.Length == 2 && dialog.SelectedReports.Any(report => report.Weekly),
+                "The selected export dialog returns the two checked reports.");
         }
 
         private static void SetBody(SummaryEditor editor, string text)

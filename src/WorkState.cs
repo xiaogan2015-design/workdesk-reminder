@@ -73,6 +73,7 @@ namespace WorkDesk
 
         [DataMember] public string Id;
         [DataMember] public string Png;
+        [DataMember(EmitDefaultValue = false)] public bool AlphaChecked;
 
         public string Marker { get { return "![截图](workdesk-image:" + Id + ")"; } }
         public byte[] ReadPng() { return Convert.FromBase64String(Png); }
@@ -258,6 +259,8 @@ namespace WorkDesk
                 var state = serializer.ReadObject(input) as WorkState;
                 if (state == null) throw new InvalidDataException("WorkDesk data is empty.");
                 state.Validate();
+                foreach (var image in state.Summaries.Where(summary => summary.Images != null).SelectMany(summary => summary.Images))
+                    SummaryImageCodec.RepairLegacy(image);
                 return state;
             }
         }

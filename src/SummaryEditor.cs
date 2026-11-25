@@ -81,17 +81,12 @@ namespace WorkDesk
 
         internal void InsertImage(BitmapSource bitmap)
         {
+            bitmap = SummaryImageCodec.RestoreScreenshotOpacity(bitmap);
             double scale = (double)SummaryImage.MaxEdge / Math.Max(bitmap.PixelWidth, bitmap.PixelHeight);
             if (scale < 1) bitmap = new TransformedBitmap(bitmap, new ScaleTransform(scale, scale));
-            var encoder = new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(bitmap));
-            var attachment = new SummaryImage { Id = Guid.NewGuid().ToString("N") };
-            using (var stream = new MemoryStream())
-            {
-                encoder.Save(stream);
-                if (stream.Length > SummaryImage.MaxBytes) throw new IOException("单张图片保存后不得超过 12 MB。");
-                attachment.Png = Convert.ToBase64String(stream.GetBuffer(), 0, (int)stream.Length);
-            }
+            var attachment = new SummaryImage {
+                Id = Guid.NewGuid().ToString("N"), Png = SummaryImageCodec.Encode(bitmap), AlphaChecked = true
+            };
 
             var figure = MakeFigure(attachment);
             Focus();
