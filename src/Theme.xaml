@@ -8,15 +8,15 @@
     <SolidColorBrush x:Key="Lilac" Color="#EDE8FD" />
 
     <Style TargetType="TextBlock">
-        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontSize" Value="{DynamicResource BodySize}" />
     </Style>
     <Style x:Key="Hint" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
         <Setter Property="Foreground" Value="{StaticResource Muted}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="{DynamicResource SmallSize}" />
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
     <Style x:Key="SectionTitle" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-        <Setter Property="FontSize" Value="19" />
+        <Setter Property="FontSize" Value="{DynamicResource SectionSize}" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
     <Style x:Key="Card" TargetType="Border">
@@ -33,7 +33,7 @@
         <Setter Property="BorderBrush" Value="{StaticResource Line}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="13,8" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="{DynamicResource SmallSize}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
@@ -54,6 +54,10 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+    <Style x:Key="Metric" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Padding" Value="14,10" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
     </Style>
     <Style x:Key="Primary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
         <Setter Property="Background" Value="{StaticResource Violet}" />
@@ -85,7 +89,7 @@
         <Setter Property="BorderBrush" Value="#DDD6EC" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="10,7" />
-        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontSize" Value="{DynamicResource BodySize}" />
         <Setter Property="MinHeight" Value="36" />
         <Setter Property="SelectionBrush" Value="{StaticResource Violet}" />
         <Setter Property="Template">
@@ -118,7 +122,7 @@
                 <ControlTemplate TargetType="DatePickerTextBox">
                     <Grid VerticalAlignment="Center">
                         <ScrollViewer x:Name="PART_ContentHost" Focusable="False" />
-                        <ContentControl x:Name="PART_Watermark" FontSize="12" Foreground="{StaticResource Muted}"
+                        <ContentControl x:Name="PART_Watermark" FontSize="{DynamicResource CaptionSize}" Foreground="{StaticResource Muted}"
                                         Focusable="False" IsHitTestVisible="False" Visibility="Collapsed" />
                     </Grid>
                     <ControlTemplate.Triggers>
@@ -130,7 +134,7 @@
     </Style>
     <Style TargetType="DatePicker">
         <Setter Property="MinHeight" Value="36" />
-        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontSize" Value="{DynamicResource BodySize}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="DatePicker">
@@ -156,7 +160,7 @@
     </Style>
     <Style TargetType="ComboBox">
         <Setter Property="MinHeight" Value="36" />
-        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontSize" Value="{DynamicResource BodySize}" />
         <Setter Property="Padding" Value="9,5" />
         <Setter Property="Background" Value="#FCFBFF" />
         <Setter Property="Foreground" Value="{StaticResource Ink}" />
@@ -197,7 +201,7 @@
     </Style>
     <Style TargetType="CheckBox">
         <Setter Property="Foreground" Value="{StaticResource Ink}" />
-        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontSize" Value="{DynamicResource BodySize}" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>

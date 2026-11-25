@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -10,6 +11,42 @@ namespace WorkDesk
 {
     internal static class Ui
     {
+        private const string SystemFace = "Segoe UI, Microsoft YaHei UI";
+
+        public static string[] InstalledFonts()
+        {
+            return Fonts.SystemFontFamilies.Select(font => font.Source).Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(font => font, StringComparer.CurrentCultureIgnoreCase).ToArray();
+        }
+
+        public static void ApplyTypography(AppearanceSettings appearance)
+        {
+            var resources = Application.Current.Resources;
+            var fonts = InstalledFonts();
+            resources["InterfaceFont"] = Face(appearance.InterfaceFont, fonts);
+            resources["EditorFont"] = Face(appearance.EditorFont, fonts);
+            double size = appearance.InterfaceSize;
+            resources["BodySize"] = size;
+            resources["SmallSize"] = size - 1;
+            resources["CaptionSize"] = size - 2;
+            resources["SectionSize"] = size + 5;
+            resources["PageTitleSize"] = size + 12;
+            resources["HeroTitleSize"] = size + 15;
+            resources["NumberSize"] = size + 9;
+            resources["EditorSize"] = (double)appearance.EditorSize;
+        }
+
+        private static FontFamily Face(string name, string[] installed)
+        {
+            return new FontFamily(installed.Contains(name, StringComparer.CurrentCultureIgnoreCase) ? name + ", " + SystemFace : SystemFace);
+        }
+
+        public static void UseEditorFont(Control control)
+        {
+            control.SetResourceReference(Control.FontFamilyProperty, "EditorFont");
+            control.SetResourceReference(Control.FontSizeProperty, "EditorSize");
+        }
+
         public static Style Style(string key) { return (Style)Application.Current.FindResource(key); }
         public static Brush Color(string hex) { return (Brush)new BrushConverter().ConvertFromString(hex); }
 
@@ -137,7 +174,7 @@ namespace WorkDesk
             this.persist = persist;
             Owner = owner;
             Title = item == null ? "新建事项" : "编辑事项";
-            FontFamily = owner.FontFamily;
+            SetResourceReference(FontFamilyProperty, "InterfaceFont");
             Foreground = owner.Foreground;
             Icon = owner.Icon;
             Background = Ui.Color("#F5F5FB");
@@ -150,6 +187,8 @@ namespace WorkDesk
 
             title.Text = original.Title ?? "";
             notes.Text = original.Notes ?? "";
+            Ui.UseEditorFont(title);
+            Ui.UseEditorFont(notes);
             lead.Text = original.LeadMinutes.ToString(CultureInfo.InvariantCulture);
             scheduled.IsChecked = item == null || original.DueUtc.HasValue;
             completed.IsChecked = original.CompletedUtc.HasValue;
@@ -157,7 +196,9 @@ namespace WorkDesk
             completedInput = new DateTimeInput("完成", original.CompletedUtc.HasValue ? original.CompletedUtc.Value.ToLocalTime() : DateTime.Now);
 
             var form = new StackPanel();
-            form.Children.Add(new TextBlock { Text = Title, FontWeight = FontWeights.Bold, FontSize = 23 });
+            var heading = new TextBlock { Text = Title, FontWeight = FontWeights.Bold };
+            heading.SetResourceReference(TextBlock.FontSizeProperty, "NumberSize");
+            form.Children.Add(heading);
             Ui.Label(form, "事项标题", title);
             Ui.Label(form, "备注（选填）", notes);
             scheduled.Style = Ui.Style("FormToggle");

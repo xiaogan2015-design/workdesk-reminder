@@ -24,7 +24,8 @@ namespace WorkDesk
             this.store = store;
             this.state = state;
             Title = "工笺 · WorkDesk";
-            FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI");
+            Ui.ApplyTypography(state.Appearance);
+            SetResourceReference(FontFamilyProperty, "InterfaceFont");
             Foreground = (Brush)FindResource("Ink");
             Language = System.Windows.Markup.XmlLanguage.GetLanguage("zh-CN");
             UseLayoutRounding = true;
@@ -37,6 +38,9 @@ namespace WorkDesk
             Content = shell;
 
             Element<Button>("NewTask").Click += delegate { EditTask(null); };
+            Element<Button>("PendingShortcut").Click += delegate { SelectTaskFilter(TaskFilter.Pending, true); };
+            Element<Button>("OverdueShortcut").Click += delegate { SelectTaskFilter(TaskFilter.Overdue, true); };
+            Element<Button>("CompletedShortcut").Click += delegate { SelectTaskFilter(TaskFilter.Completed, true); };
             InitializePages();
             PreviewKeyDown += delegate(object sender, KeyEventArgs e) {
                 if (page == DeskPage.Summary && (e.Key == Key.F11 || (e.Key == Key.Escape && summaryFullScreen && !summaryPicker.IsDropDownOpen)))
@@ -126,10 +130,7 @@ namespace WorkDesk
                 for (int i = 0; i < labels.Length; i++)
                 {
                     var choice = (TaskFilter)i;
-                    var button = Ui.Button(labels[i], delegate {
-                        filter = choice;
-                        RefreshDashboard();
-                    });
+                    var button = Ui.Button(labels[i], delegate { SelectTaskFilter(choice, false); });
                     button.Margin = new Thickness(0, 0, 6, 4);
                     button.Padding = new Thickness(10, 5, 10, 5);
                     filters.Children.Add(button);
@@ -141,6 +142,20 @@ namespace WorkDesk
                 button.Style = i == (int)filter ? Ui.Style("Quiet") : (Style)TryFindResource(typeof(Button));
                 AutomationProperties.SetItemStatus(button, i == (int)filter ? "已选中" : "未选中");
             }
+        }
+
+        private void SelectTaskFilter(TaskFilter choice, bool jumpToList)
+        {
+            filter = choice;
+            RefreshDashboard();
+            Element<ScrollViewer>("TaskListScroll").ScrollToTop();
+            if (!jumpToList) return;
+            var card = Element<Border>("TaskCard");
+            var pageScroll = Element<ScrollViewer>("PageScroll");
+            pageScroll.UpdateLayout();
+            double top = card.TranslatePoint(new Point(0, 0), pageScroll).Y + pageScroll.VerticalOffset;
+            pageScroll.ScrollToVerticalOffset(Math.Max(0, top - 12));
+            ((Button)Element<WrapPanel>("Filters").Children[(int)choice]).Focus();
         }
 
         private void RenderRows(DateTimeOffset now)
@@ -185,10 +200,10 @@ namespace WorkDesk
             var title = Ui.Text(item.Title);
             title.TextWrapping = TextWrapping.Wrap;
             title.FontWeight = FontWeights.SemiBold;
-            title.FontSize = 15;
             details.Children.Add(title);
             var metadata = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
-            var status = new TextBlock { Text = tone.Label, Foreground = tone.Text, FontSize = 12, FontWeight = FontWeights.SemiBold };
+            var status = new TextBlock { Text = tone.Label, Foreground = tone.Text, FontWeight = FontWeights.SemiBold };
+            status.SetResourceReference(TextBlock.FontSizeProperty, "CaptionSize");
             metadata.Children.Add(new Border {
                 Background = tone.Badge, CornerRadius = new CornerRadius(5), Padding = new Thickness(6, 2, 6, 2),
                 Margin = new Thickness(0, 0, 7, 0), Child = status

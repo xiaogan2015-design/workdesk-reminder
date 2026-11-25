@@ -24,9 +24,11 @@ namespace WorkDesk
             AcceptsReturn = true;
             AllowDrop = false;
             IsDocumentEnabled = true;
+            Ui.UseEditorFont(this);
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
             Document.PagePadding = new Thickness(0);
-            Document.LineHeight = 22;
+            Document.SetResourceReference(FlowDocument.FontSizeProperty, "EditorSize");
+            Document.SetResourceReference(FlowDocument.FontFamilyProperty, "EditorFont");
             Document.Resources.Add(typeof(Paragraph), new Style(typeof(Paragraph)) {
                 Setters = { new Setter(Paragraph.MarginProperty, new Thickness(0)) }
             });

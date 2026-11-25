@@ -19,7 +19,7 @@ namespace WorkDesk
             var ordered = reports.OrderBy(report => report.Weekly).ThenByDescending(report => report.Period).ToArray();
             Owner = owner;
             Icon = owner.Icon;
-            FontFamily = owner.FontFamily;
+            SetResourceReference(FontFamilyProperty, "InterfaceFont");
             Foreground = owner.Foreground;
             Background = Ui.Color("#F5F5FB");
             Title = "勾选导出工作总结";

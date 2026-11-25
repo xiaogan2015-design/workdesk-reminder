@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using Microsoft.Win32;
 
 namespace WorkDesk
@@ -13,6 +14,7 @@ namespace WorkDesk
     internal sealed partial class MainWindow
     {
         private const string ReportFormats = "Markdown 文件 (*.md)|*.md|Markdown 和图片压缩包 (*.zip)|*.zip";
+        private const string DefaultFontChoice = "系统默认字体";
         private enum DeskPage { Desk, Summary, Settings }
         private static readonly string[] Weekdays = { "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六" };
         private DeskPage page;
@@ -51,9 +53,33 @@ namespace WorkDesk
             };
             var pageScroll = Element<ScrollViewer>("PageScroll");
             pageScroll.ScrollChanged += delegate(object sender, ScrollChangedEventArgs e) {
-                if (page == DeskPage.Summary && ReferenceEquals(e.OriginalSource, pageScroll) && e.ViewportHeightChange != 0) SizeSummaryLayout();
+                if (!ReferenceEquals(e.OriginalSource, pageScroll) || e.ViewportHeightChange == 0) return;
+                Element<ScrollViewer>("TaskListScroll").MaxHeight = Math.Max(210, pageScroll.ViewportHeight * 0.56);
+                if (page == DeskPage.Summary) SizeSummaryLayout();
             };
+            pageScroll.PreviewMouseWheel += delegate(object sender, MouseWheelEventArgs e) { ContinueScrollAtEdge(pageScroll, e); };
             Element<DockPanel>("PageHeader").SizeChanged += delegate { if (page == DeskPage.Summary) SizeSummaryLayout(); };
+        }
+
+        private static void ContinueScrollAtEdge(ScrollViewer page, MouseWheelEventArgs e)
+        {
+            DependencyObject node = e.OriginalSource as DependencyObject;
+            while (node != null && !ReferenceEquals(node, page))
+            {
+                var inner = node as ScrollViewer;
+                if (inner != null)
+                {
+                    bool canScroll = e.Delta < 0 ? inner.VerticalOffset < inner.ScrollableHeight - 0.5 : inner.VerticalOffset > 0.5;
+                    if (!canScroll)
+                    {
+                        page.ScrollToVerticalOffset(page.VerticalOffset - e.Delta / 3.0);
+                        e.Handled = true;
+                    }
+                    return;
+                }
+                var text = node as FrameworkContentElement;
+                node = text != null ? text.Parent : (node is Visual ? VisualTreeHelper.GetParent(node) : LogicalTreeHelper.GetParent(node));
+            }
         }
 
         private void RefreshSideCards(DateTime today)
@@ -153,7 +179,8 @@ namespace WorkDesk
             var header = Element<DockPanel>("PageHeader");
             double headerHeight = summaryFullScreen ? 0 : header.ActualHeight + header.Margin.Top + header.Margin.Bottom;
             var viewport = Element<ScrollViewer>("PageScroll").ViewportHeight;
-            summaryLayout.Height = Math.Max(535, viewport - margin.Top - margin.Bottom - headerHeight);
+            double minimum = 535 + Math.Max(0, state.Appearance.InterfaceSize - AppearanceSettings.DefaultSize) * 10;
+            summaryLayout.Height = Math.Max(minimum, viewport - margin.Top - margin.Bottom - headerHeight);
         }
 
         internal bool HasUnsavedSummary
@@ -164,9 +191,9 @@ namespace WorkDesk
         internal bool CanLeaveSummary()
         {
             if (!HasUnsavedSummary) return true;
-            var decision = MessageBox.Show(this, "这篇总结有未保存的修改。离开前要保存吗？", "工作总结",
-                MessageBoxButton.YesNoCancel, MessageBoxImage.Question, MessageBoxResult.Cancel);
-            return decision == MessageBoxResult.No || (decision == MessageBoxResult.Yes && SaveSummary());
+            var dialog = new SummaryLeaveDialog(this);
+            if (dialog.ShowDialog() != true) return false;
+            return dialog.Choice == SummaryDeparture.Discard || (dialog.Choice == SummaryDeparture.Save && SaveSummary());
         }
 
         private UIElement BuildSummaryPage()
@@ -324,6 +351,7 @@ namespace WorkDesk
         private UIElement BuildSettingsPage()
         {
             var panels = new StackPanel { HorizontalAlignment = HorizontalAlignment.Stretch };
+            panels.Children.Add(BuildAppearanceCard());
             var schedules = new StackPanel();
             schedules.Children.Add(Ui.Text("总结提醒", "SectionTitle"));
             var settings = state.Settings;
@@ -369,7 +397,9 @@ namespace WorkDesk
             save.HorizontalAlignment = HorizontalAlignment.Left;
             save.Margin = new Thickness(0, 15, 0, 0);
             schedules.Children.Add(save);
-            panels.Children.Add(Ui.Card(schedules));
+            var reminderCard = Ui.Card(schedules);
+            reminderCard.Margin = new Thickness(0, 12, 0, 0);
+            panels.Children.Add(reminderCard);
 
             var local = new StackPanel();
             local.Children.Add(Ui.Text("托盘与本地数据", "SectionTitle"));
@@ -402,6 +432,62 @@ namespace WorkDesk
             backupCard.Margin = new Thickness(0, 12, 0, 0);
             panels.Children.Add(backupCard);
             return panels;
+        }
+
+        private Border BuildAppearanceCard()
+        {
+            var content = new StackPanel();
+            content.Children.Add(Ui.Text("字体与字号", "SectionTitle"));
+            var appearance = state.Appearance;
+            var fonts = new[] { DefaultFontChoice }.Concat(Ui.InstalledFonts()).ToArray();
+            var interfaceFont = FontChoice(fonts, appearance.InterfaceFont);
+            var editorFont = FontChoice(fonts, appearance.EditorFont);
+            var interfaceSize = SizeChoice(appearance.InterfaceSize, AppearanceSettings.MaxInterfaceSize);
+            var editorSize = SizeChoice(appearance.EditorSize, AppearanceSettings.MaxEditorSize);
+            content.Children.Add(AppearanceGroup("界面字体", "界面字号", interfaceFont, interfaceSize));
+            content.Children.Add(AppearanceGroup("编辑框字体", "编辑框字号", editorFont, editorSize));
+            var save = Ui.Button("保存字体设置", delegate {
+                var next = state.Copy();
+                next.Appearance = new AppearanceSettings {
+                    InterfaceFont = interfaceFont.SelectedIndex > 0 ? (string)interfaceFont.SelectedItem : null,
+                    InterfaceSize = (int)interfaceSize.SelectedItem,
+                    EditorFont = editorFont.SelectedIndex > 0 ? (string)editorFont.SelectedItem : null,
+                    EditorSize = (int)editorSize.SelectedItem
+                };
+                if (!Commit(next)) return;
+                Ui.ApplyTypography(state.Appearance);
+                Banner("字体和字号已保存并应用。");
+            }, "Primary");
+            save.HorizontalAlignment = HorizontalAlignment.Left;
+            save.Margin = new Thickness(0, 13, 0, 0);
+            content.Children.Add(save);
+            return Ui.Card(content);
+        }
+
+        private static Border AppearanceGroup(string fontLabel, string sizeLabel, ComboBox font, ComboBox size)
+        {
+            var fields = new WrapPanel();
+            var fontField = new StackPanel { Margin = new Thickness(0, 0, 14, 0) };
+            var sizeField = new StackPanel();
+            Ui.Label(fontField, fontLabel, font);
+            Ui.Label(sizeField, sizeLabel, size);
+            fields.Children.Add(fontField);
+            fields.Children.Add(sizeField);
+            return Ui.FormGroup(fields);
+        }
+
+        private static ComboBox FontChoice(string[] fonts, string selected)
+        {
+            int index = Array.FindIndex(fonts, name => String.Equals(name, selected, StringComparison.CurrentCultureIgnoreCase));
+            return new ComboBox { Width = 215, ItemsSource = fonts, SelectedIndex = Math.Max(0, index), MaxDropDownHeight = 285 };
+        }
+
+        private static ComboBox SizeChoice(int selected, int maximum)
+        {
+            return new ComboBox {
+                Width = 75, ItemsSource = Enumerable.Range(AppearanceSettings.MinSize, maximum - AppearanceSettings.MinSize + 1).ToArray(),
+                SelectedItem = selected, MaxDropDownHeight = 285
+            };
         }
 
         private static TextBox TimeBox(int minute)

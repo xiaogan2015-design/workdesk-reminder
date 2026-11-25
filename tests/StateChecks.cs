@@ -106,8 +106,11 @@ internal static class StateChecks
         try
         {
             Check(store.Load().Tasks.Count == 0, "Fresh installation");
+            notified.Appearance = null;
             store.Save(notified);
             var loaded = new StateStore(folder).Load();
+            Check(loaded.Appearance.InterfaceSize == 14 && loaded.Appearance.EditorSize == 14 && loaded.Appearance.InterfaceFont == null,
+                "Legacy settings without typography use the existing defaults.");
             Check(loaded.Tasks.Any(t => t.Title == upcoming.Title) && !loaded.CollectReminders(now).Daily, "Round-trip Chinese text and reminder deduplication");
             Check(loaded.Tasks.Single(t => t.Id == upcoming.Id).DueUtc == item.DueUtc, "Round-trip UTC timestamps");
             store.Save(state);
@@ -118,10 +121,14 @@ internal static class StateChecks
             recovery.Save(state);
             Check(!recovery.Recovered && new StateStore(folder).Load().Summaries.Count == 2, "Restore primary without replacing last valid backup");
             Directory.CreateDirectory(Path.GetDirectoryName(backup.FilePath));
+            state.Appearance = new AppearanceSettings { InterfaceFont = "Segoe UI", InterfaceSize = 17, EditorFont = "Consolas", EditorSize = 26 };
             store.BackUp(backup.FilePath, state);
             var backupState = backup.Load();
             Check(backupState.Tasks.Count == state.Tasks.Count && backupState.Summaries.Count == 2 && backupState.Settings.WeeklyEnabled,
                 "JSON backup can be loaded as complete application data");
+            Check(backupState.Appearance.InterfaceFont == "Segoe UI" && backupState.Appearance.InterfaceSize == 17 &&
+                backupState.Appearance.EditorFont == "Consolas" && backupState.Appearance.EditorSize == 26,
+                "Complete backups preserve the two font configurations.");
             MarkdownExport.Write(store, markdownFile, archive);
             Check(File.ReadAllText(markdownFile) == archive, "Markdown file preserves Chinese text and line breaks");
             state.SetSummary(today, false, image.Marker, now.UtcDateTime, new System.Collections.Generic.List<SummaryImage> { image });

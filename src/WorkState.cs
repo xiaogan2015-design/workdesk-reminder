@@ -107,6 +107,26 @@ namespace WorkDesk
         [DataMember] public DayOfWeek WeeklyDay = DayOfWeek.Friday;
     }
 
+    [DataContract]
+    internal sealed class AppearanceSettings
+    {
+        public const int MinSize = 12;
+        public const int MaxInterfaceSize = 20;
+        public const int MaxEditorSize = 32;
+        public const int DefaultSize = 14;
+
+        [DataMember] public string InterfaceFont;
+        [DataMember] public int InterfaceSize = DefaultSize;
+        [DataMember] public string EditorFont;
+        [DataMember] public int EditorSize = DefaultSize;
+
+        public void Normalize()
+        {
+            if (InterfaceSize < MinSize || InterfaceSize > MaxInterfaceSize) InterfaceSize = DefaultSize;
+            if (EditorSize < MinSize || EditorSize > MaxEditorSize) EditorSize = DefaultSize;
+        }
+    }
+
     internal enum TaskFilter { Pending, Today, Overdue, Completed }
 
     internal sealed class ReminderBatch
@@ -125,6 +145,7 @@ namespace WorkDesk
         [DataMember] public List<WorkItem> Tasks = new List<WorkItem>();
         [DataMember] public List<WorkSummary> Summaries = new List<WorkSummary>();
         [DataMember] public ReminderSettings Settings = new ReminderSettings();
+        [DataMember] public AppearanceSettings Appearance = new AppearanceSettings();
         [DataMember] public string LastDailyReminder;
         [DataMember] public string LastWeeklyReminder;
 
@@ -203,6 +224,9 @@ namespace WorkDesk
                 Settings.WeeklyMinute < 0 || Settings.WeeklyMinute >= 1440 ||
                 !Enum.IsDefined(typeof(DayOfWeek), Settings.WeeklyDay))
                 throw new InvalidDataException("Invalid WorkDesk data version or reminder settings.");
+
+            if (Appearance == null) Appearance = new AppearanceSettings();
+            Appearance.Normalize();
 
             var taskIds = new HashSet<string>();
             foreach (var item in Tasks)

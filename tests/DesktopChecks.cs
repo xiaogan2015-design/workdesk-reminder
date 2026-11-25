@@ -7,6 +7,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -107,6 +108,7 @@ namespace WorkDesk
             reopened.Close();
 
             CheckSummariesAndReminders(store);
+            CheckTaskShortcutsAndScrolling(store);
         }
 
         private static void CheckSummariesAndReminders(StateStore store)
@@ -166,6 +168,9 @@ namespace WorkDesk
                 daily.Redo();
                 Check(daily.ReadMarkdown() == withImage, "Redo restores the inline image and its attachment.");
                 Check(window.HasUnsavedSummary, "New summary content is tracked as a draft.");
+                RespondToSummaryDialog(window, delegate { Click(window.Element<Button>("SettingsNav")); }, null);
+                Check(window.HasUnsavedSummary && ReferenceEquals(daily, Find<SummaryEditor>(window, "总结正文")),
+                    "Closing the custom unsaved dialog keeps the same draft and editor.");
                 Click(Descendants<Button>(window).Single(b => b.Content as string == "全屏"));
                 window.UpdateLayout();
                 Check(window.WindowState == WindowState.Maximized && window.WindowStyle == WindowStyle.None &&
@@ -212,7 +217,10 @@ namespace WorkDesk
                 Click(Descendants<Button>(window).Single(b => b.Content as string == "保存总结"));
                 Check(store.Load().FindSummary(DateTime.Today, false).Images == null, "Saving after removal drops the unused image from the report.");
                 CheckExportDialog(window, store.Load().Summaries);
-                Click(window.Element<Button>("SettingsNav"));
+                SetBody(reopened, "仅用于测试的未保存文本");
+                RespondToSummaryDialog(window, delegate { Click(window.Element<Button>("SettingsNav")); }, "不保存并离开");
+                Check(store.Load().FindSummary(DateTime.Today, false).Text == plain && window.Element<TextBlock>("PageTitle").Text == "提醒设置",
+                    "Discard leaves the summary and keeps its saved version.");
                 window.UpdateLayout();
                 var weekday = Find<ComboBox>(window, "周报星期");
                 var dropdown = (ToggleButton)weekday.Template.FindName("DropDownToggle", weekday);
@@ -229,7 +237,100 @@ namespace WorkDesk
                 Check(store.Load().Settings.DailyMinute == 1050, "Edited reminder settings are saved.");
                 host.Tick(DateTimeOffset.Now);
                 Check(!app.Windows.OfType<ReminderPopup>().Any(), "The same task and summary reminders are not duplicated.");
+                CheckTypography(window, store);
+                var draftToSave = Find<SummaryEditor>(window, "总结正文");
+                SetBody(draftToSave, "保存后离开");
+                RespondToSummaryDialog(window, delegate { Click(window.Element<Button>("SettingsNav")); }, "保存并离开");
+                Check(store.Load().FindSummary(DateTime.Today, false).Text == "保存后离开" &&
+                    window.Element<TextBlock>("PageTitle").Text == "提醒设置", "Save and leave commits the draft before opening the destination.");
             }
+            window.Close();
+        }
+
+        private static void RespondToSummaryDialog(MainWindow window, Action open, string action)
+        {
+            Exception failure = null;
+            window.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(delegate {
+                var dialog = Application.Current.Windows.OfType<SummaryLeaveDialog>().SingleOrDefault();
+                try
+                {
+                    Check(dialog != null && dialog.IsVisible && dialog.WindowStyle == WindowStyle.None &&
+                        Descendants<Button>(dialog).Any(button => button.Content as string == "继续编辑" && button.IsCancel),
+                        "Leaving an unsaved report opens the styled confirmation with a safe cancel action.");
+                    if (action != null) Click(Descendants<Button>(dialog).Single(button => button.Content as string == action));
+                }
+                catch (Exception ex) { failure = ex; }
+                finally { if (dialog != null && dialog.IsVisible) dialog.Close(); }
+            }));
+            open();
+            if (failure != null) throw new InvalidOperationException("Summary confirmation check failed.", failure);
+        }
+
+        private static void CheckTypography(MainWindow window, StateStore store)
+        {
+            var interfaceFont = Find<ComboBox>(window, "界面字体");
+            var editorFont = Find<ComboBox>(window, "编辑框字体");
+            var ui = interfaceFont.Items.Cast<string>().First(name => name == "Segoe UI");
+            var text = editorFont.Items.Cast<string>().First(name => name == "Consolas");
+            interfaceFont.SelectedItem = ui;
+            editorFont.SelectedItem = text;
+            Find<ComboBox>(window, "界面字号").SelectedItem = 18;
+            Find<ComboBox>(window, "编辑框字号").SelectedItem = 26;
+            Click(Descendants<Button>(window).Single(button => button.Content as string == "保存字体设置"));
+            var saved = store.Load().Appearance;
+            Check(saved.InterfaceFont == ui && saved.EditorFont == text && saved.InterfaceSize == 18 && saved.EditorSize == 26,
+                "Font preferences from the settings page persist on disk independently.");
+            Check(window.FontFamily.Source.StartsWith(ui + ",") && window.Element<TextBlock>("PageTitle").FontSize == 30,
+                "The saved interface typography applies immediately to the existing window.");
+            Click(window.Element<Button>("SummaryNav"));
+            var editor = Find<SummaryEditor>(window, "总结正文");
+            Check(editor.FontSize == 26 && editor.Document.FontSize == 26 && editor.Document.FontFamily.Source.StartsWith(text + ","),
+                "The report editor and its document use their separate saved typography.");
+        }
+
+        private static void CheckTaskShortcutsAndScrolling(StateStore store)
+        {
+            var state = new WorkState();
+            var now = DateTime.UtcNow;
+            state.Tasks.Add(new WorkItem { Title = "逾期示例", DueUtc = now.AddDays(-1) });
+            state.Tasks.Add(new WorkItem { Title = "完成示例", CompletedUtc = now });
+            for (int i = 0; i < 30; i++) state.Tasks.Add(new WorkItem { Title = "滚动检查 " + i });
+            for (int i = 0; i < 36; i++) state.SetSummary(DateTime.Today.AddDays(-i), false, "历史示例 " + i, now);
+            var window = new MainWindow(store, state);
+            window.Show();
+            window.UpdateLayout();
+            var page = window.Element<ScrollViewer>("PageScroll");
+            var list = window.Element<ScrollViewer>("TaskListScroll");
+            var rows = window.Element<StackPanel>("TaskRows");
+            var tabs = window.Element<WrapPanel>("Filters");
+            Click(window.Element<Button>("CompletedShortcut"));
+            Check(AutomationProperties.GetItemStatus(tabs.Children[3]) == "已选中" && rows.Children.Count == 1 &&
+                AutomationProperties.GetItemStatus(rows.Children[0]) == "已完成", "Today Completed navigates to the existing Completed filter.");
+            Click(window.Element<Button>("OverdueShortcut"));
+            Check(AutomationProperties.GetItemStatus(tabs.Children[2]) == "已选中" && rows.Children.Count == 1 &&
+                AutomationProperties.GetItemStatus(rows.Children[0]) == "已逾期", "The Overdue card opens the overdue task filter.");
+            Click(window.Element<Button>("PendingShortcut"));
+            window.UpdateLayout();
+            Check(AutomationProperties.GetItemStatus(tabs.Children[0]) == "已选中" && rows.Children.Count == 31 &&
+                page.VerticalOffset > 0 && list.ScrollableHeight > 0, "The Pending card jumps to a scrollable list of pending tasks.");
+            list.ScrollToEnd();
+            page.ScrollToTop();
+            window.UpdateLayout();
+            var wheel = new MouseWheelEventArgs(Mouse.PrimaryDevice, 0, -120) { RoutedEvent = Mouse.PreviewMouseWheelEvent };
+            rows.RaiseEvent(wheel);
+            window.UpdateLayout();
+            Check(list.VerticalOffset > 0 && page.VerticalOffset > 0 && wheel.Handled,
+                "At the end of an inner list, the mouse wheel continues scrolling the page.");
+            Click(window.Element<Button>("SummaryNav"));
+            window.UpdateLayout();
+            var history = Descendants<ScrollViewer>(window.Element<ContentControl>("OtherPage")).Single();
+            history.ScrollToEnd();
+            window.UpdateLayout();
+            Check(history.ScrollableHeight > 0 && history.VerticalOffset > 0, "A long report history scrolls independently of the editor.");
+            Click(window.Element<Button>("SettingsNav"));
+            page.ScrollToEnd();
+            window.UpdateLayout();
+            Check(page.ScrollableHeight > 0 && page.VerticalOffset > 0, "Settings cards can scroll to the bottom at the default window size.");
             window.Close();
         }
 
