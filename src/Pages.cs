@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Windows;
@@ -18,7 +19,7 @@ namespace WorkDesk
         private DateTime summaryAnchor;
         private bool summaryWeekly;
         private string savedSummary;
-        private TextBox summaryInput;
+        private SummaryEditor summaryInput;
         private StackPanel historyRows;
 
         private void InitializePages()
@@ -100,7 +101,7 @@ namespace WorkDesk
 
         internal bool HasUnsavedSummary
         {
-            get { return page == DeskPage.Summary && summaryInput.Text != savedSummary; }
+            get { return page == DeskPage.Summary && summaryInput.ReadMarkdown() != savedSummary; }
         }
 
         internal bool CanLeaveSummary()
@@ -146,22 +147,33 @@ namespace WorkDesk
             Ui.Label(form, summaryWeekly ? "选择周内任一天" : "总结日期", date);
 
             var prior = state.FindSummary(summaryDate, summaryWeekly);
-            savedSummary = prior == null ? "" : prior.Text;
-            summaryInput = new TextBox {
-                Text = savedSummary, MinHeight = 228, MaxLength = 40000, AcceptsReturn = true,
-                TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto
-            };
-            Ui.Label(form, "总结正文", summaryInput);
+            summaryInput = new SummaryEditor(prior, Banner) { Style = Ui.Style("SummarySurface") };
+            savedSummary = summaryInput.ReadMarkdown();
+            var toolbar = new DockPanel { Margin = new Thickness(0, 16, 0, 6) };
+            var paste = Ui.Button("粘贴图片", delegate { summaryInput.PasteImage(true); }, "Quiet");
+            paste.ToolTip = "也可以在正文中按 Ctrl+V 粘贴剪贴板截图";
+            paste.Padding = new Thickness(10, 5, 10, 5);
+            DockPanel.SetDock(paste, Dock.Right);
+            toolbar.Children.Add(paste);
+            toolbar.Children.Add(new TextBlock { Text = "总结正文", FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+            AutomationProperties.SetName(summaryInput, "总结正文");
+            form.Children.Add(toolbar);
+            form.Children.Add(summaryInput);
             var actions = new WrapPanel { Margin = new Thickness(0, 11, 0, 0) };
             var save = Ui.Button("保存总结", delegate { SaveSummary(); }, "Primary");
             var copy = Ui.Button("复制 Markdown", delegate {
-                if (!String.IsNullOrWhiteSpace(summaryInput.Text)) CopyMarkdown(CurrentSummaryMarkdown());
-                else Banner("请先填写总结正文。");
+                var images = new List<SummaryImage>();
+                string text = summaryInput.ReadMarkdown(images);
+                if (String.IsNullOrWhiteSpace(text)) { Banner("请先填写总结正文或粘贴图片。"); return; }
+                CopyMarkdown(MarkdownExport.WithImages(MarkdownExport.Summary(summaryWeekly, summaryDate, text), SummaryFilename(), images),
+                    images.Count == 0 ? "已复制 Markdown。" : "已复制 Markdown。分享时请将导出的图片目录与正文放在一起。");
             });
             var export = Ui.Button("导出 Markdown", delegate {
-                if (!String.IsNullOrWhiteSpace(summaryInput.Text))
-                    ExportMarkdown((summaryWeekly ? "周报-" : "日报-") + WorkState.PeriodKey(summaryDate, summaryWeekly), CurrentSummaryMarkdown());
-                else Banner("请先填写总结正文。");
+                var images = new List<SummaryImage>();
+                string text = summaryInput.ReadMarkdown(images);
+                if (String.IsNullOrWhiteSpace(text)) { Banner("请先填写总结正文或粘贴图片。"); return; }
+                string markdown = MarkdownExport.Summary(summaryWeekly, summaryDate, text);
+                ExportFile(SummaryFilename(), "Markdown 文件 (*.md)|*.md", dialog => MarkdownExport.WriteWithImages(store, dialog.FileName, markdown, images));
             });
             foreach (var button in new[] { save, copy, export })
             {
@@ -190,14 +202,16 @@ namespace WorkDesk
             return section;
         }
 
-        private string CurrentSummaryMarkdown() { return MarkdownExport.Summary(summaryWeekly, summaryDate, summaryInput.Text); }
+        private string SummaryFilename() { return (summaryWeekly ? "周报-" : "日报-") + WorkState.PeriodKey(summaryDate, summaryWeekly); }
 
         private bool SaveSummary()
         {
-            string value = summaryInput.Text;
-            if (String.IsNullOrWhiteSpace(value)) { Banner("请先填写总结正文。"); summaryInput.Focus(); return false; }
+            var images = new List<SummaryImage>();
+            string value = summaryInput.ReadMarkdown(images);
+            if (String.IsNullOrWhiteSpace(value)) { Banner("请先填写总结正文或粘贴图片。"); summaryInput.Focus(); return false; }
+            if (value.Length > 40000) { Banner("总结正文最多可保存 40000 个字符。"); return false; }
             var next = state.Copy();
-            next.SetSummary(summaryDate, summaryWeekly, value, DateTime.UtcNow);
+            next.SetSummary(summaryDate, summaryWeekly, value, DateTime.UtcNow, images);
             if (!Commit(next)) return false;
             savedSummary = value;
             Banner(summaryWeekly ? "周报已保存。" : "日报已保存。");
@@ -214,7 +228,8 @@ namespace WorkDesk
                 var button = Ui.Button(summary.Period, delegate { OpenSummary(date, summaryWeekly); }, date == summaryDate ? "Quiet" : null);
                 button.Margin = new Thickness(0, 0, 4, 6);
                 button.HorizontalContentAlignment = HorizontalAlignment.Left;
-                button.ToolTip = summary.Text.Length <= 180 ? summary.Text : summary.Text.Substring(0, 180) + "…";
+                string preview = SummaryImage.Reference.Replace(summary.Text, "[截图]");
+                button.ToolTip = preview.Length <= 180 ? preview : preview.Substring(0, 180) + "…";
                 historyRows.Children.Add(button);
             }
             if (historyRows.Children.Count == 0) historyRows.Children.Add(Ui.Text("保存后可从这里回看。", "Hint"));
@@ -222,20 +237,30 @@ namespace WorkDesk
 
         private UIElement BuildSettingsPage()
         {
-            var panels = new StackPanel { MaxWidth = 720, HorizontalAlignment = HorizontalAlignment.Stretch };
+            var panels = new StackPanel { MaxWidth = 760, HorizontalAlignment = HorizontalAlignment.Stretch };
             var schedules = new StackPanel();
             schedules.Children.Add(Ui.Text("总结提醒", "SectionTitle"));
             var settings = state.Settings;
-            var daily = new CheckBox { Content = "每天提醒写日报", IsChecked = settings.DailyEnabled, Margin = new Thickness(0, 14, 0, 0) };
-            var weekly = new CheckBox { Content = "每周提醒写周报", IsChecked = settings.WeeklyEnabled, Margin = new Thickness(0, 15, 0, 0) };
+            var daily = new CheckBox { Content = "每天提醒写日报", IsChecked = settings.DailyEnabled, Style = Ui.Style("FormToggle") };
+            var weekly = new CheckBox { Content = "每周提醒写周报", IsChecked = settings.WeeklyEnabled, Style = Ui.Style("FormToggle") };
             var dailyTime = TimeBox(settings.DailyMinute);
             var weeklyTime = TimeBox(settings.WeeklyMinute);
-            var weekday = new ComboBox { ItemsSource = Weekdays, SelectedIndex = (int)settings.WeeklyDay, Width = 112, MinHeight = 30, HorizontalAlignment = HorizontalAlignment.Left };
-            schedules.Children.Add(daily);
-            Ui.Label(schedules, "日报时间（24 小时制）", dailyTime);
-            schedules.Children.Add(weekly);
-            Ui.Label(schedules, "周报星期", weekday);
-            Ui.Label(schedules, "周报时间（24 小时制）", weeklyTime);
+            var weekday = new ComboBox { ItemsSource = Weekdays, SelectedIndex = (int)settings.WeeklyDay, Width = 122, HorizontalAlignment = HorizontalAlignment.Left };
+            var dailyPanel = new StackPanel();
+            dailyPanel.Children.Add(daily);
+            Ui.Label(dailyPanel, "日报时间（24 小时制）", dailyTime);
+            var weeklyPanel = new StackPanel();
+            weeklyPanel.Children.Add(weekly);
+            var weeklyFields = new WrapPanel();
+            var weekdayField = new StackPanel { Margin = new Thickness(0, 0, 15, 0) };
+            var weeklyTimeField = new StackPanel();
+            Ui.Label(weekdayField, "周报星期", weekday);
+            Ui.Label(weeklyTimeField, "周报时间（24 小时制）", weeklyTime);
+            weeklyFields.Children.Add(weekdayField);
+            weeklyFields.Children.Add(weeklyTimeField);
+            weeklyPanel.Children.Add(weeklyFields);
+            schedules.Children.Add(Ui.FormGroup(dailyPanel));
+            schedules.Children.Add(Ui.FormGroup(weeklyPanel));
             var save = Ui.Button("保存提醒设置", delegate {
                 TimeSpan dayClock, weekClock;
                 bool validDaily = Ui.TryTime(dailyTime.Text, out dayClock);
@@ -262,7 +287,7 @@ namespace WorkDesk
 
             var local = new StackPanel();
             local.Children.Add(Ui.Text("托盘与本地数据", "SectionTitle"));
-            var startup = new CheckBox { Content = "登录 Windows 后启动工笺", Margin = new Thickness(0, 11, 0, 0) };
+            var startup = new CheckBox { Content = "登录 Windows 后启动工笺", Margin = new Thickness(0, 11, 0, 0), Style = Ui.Style("FormToggle") };
             try { startup.IsChecked = StartupRegistration.Enabled; }
             catch (Exception ex) { startup.IsEnabled = false; startup.ToolTip = ex.Message; }
             bool reverting = false;
@@ -298,9 +323,9 @@ namespace WorkDesk
             return new TextBox { Text = Ui.Clock(minute), MaxLength = 5, Width = 79, HorizontalAlignment = HorizontalAlignment.Left };
         }
 
-        private void CopyMarkdown(string data)
+        private void CopyMarkdown(string data, string message = "已复制 Markdown。")
         {
-            try { Clipboard.SetText(data, TextDataFormat.UnicodeText); Banner("已复制 Markdown。"); }
+            try { Clipboard.SetText(data, TextDataFormat.UnicodeText); Banner(message); }
             catch (Exception ex) { Banner("复制失败：" + ex.Message); }
         }
 
@@ -314,7 +339,8 @@ namespace WorkDesk
             ExportFile("工笺备份-" + WorkState.PeriodKey(DateTime.Today, false),
                 "完整数据备份 (*.json)|*.json|可阅读的 Markdown (*.md)|*.md", dialog => {
                     if (dialog.FilterIndex == 1) store.BackUp(dialog.FileName, state);
-                    else MarkdownExport.Write(store, dialog.FileName, MarkdownExport.Archive(state, DateTimeOffset.Now));
+                    else MarkdownExport.WriteWithImages(store, dialog.FileName, MarkdownExport.Archive(state, DateTimeOffset.Now),
+                        state.Summaries.Where(summary => summary.Images != null).SelectMany(summary => summary.Images));
                 });
         }
 

@@ -6,6 +6,9 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
 namespace WorkDesk
@@ -55,6 +58,11 @@ namespace WorkDesk
                 Check(Descendants<TextBlock>(editor).Any(t => t.Text == "请输入事项标题。"), "Blank titles stay in the editor.");
                 Find<TextBox>(editor, "事项标题").Text = "核对计划";
                 Find<TextBox>(editor, "备注（选填）").Text = "两条说明\n续行";
+                var date = Find<DatePicker>(editor, "截止日期");
+                date.ApplyTemplate();
+                Click((Button)date.Template.FindName("PART_Button", date));
+                Check(date.IsDropDownOpen, "The redesigned date field opens its calendar.");
+                date.IsDropDownOpen = false;
                 Find<TextBox>(editor, "截止时间").Text = "25:99";
                 Click(Descendants<Button>(editor).Single(b => (string)b.Content == "保存事项"));
                 Check(Descendants<TextBlock>(editor).Any(t => t.Text.StartsWith("请选择有效的截止")), "Invalid deadlines stay in the editor.");
@@ -126,24 +134,57 @@ namespace WorkDesk
                 Click(Descendants<Button>(popup).Single(b => (string)b.Content == "写日报"));
                 Check(window.Element<TextBlock>("PageTitle").Text == "工作总结" &&
                     Find<DatePicker>(window, "总结日期").SelectedDate == DateTime.Today, "The daily popup opens today's editor.");
-                var daily = Find<TextBox>(window, "总结正文");
-                daily.Text = "    已完成核对\n\n- 待同步";
+                window.UpdateLayout();
+                var daily = Find<SummaryEditor>(window, "总结正文");
+                daily.Focus();
+                var plain = "    已完成核对\n\n- 待同步";
+                SetBody(daily, plain);
+                Check(daily.ReadMarkdown() == plain, "The inline editor preserves Markdown indentation and paragraphs.");
+                var pixels = new byte[640 * 360 * 3];
+                new Random(41).NextBytes(pixels);
+                var picture = BitmapSource.Create(640, 360, 96, 96, PixelFormats.Bgr24, null, pixels, 640 * 3);
+                daily.CaretPosition = daily.Document.ContentEnd.GetInsertionPosition(LogicalDirection.Backward);
+                daily.InsertImage(picture);
+                var images = new List<SummaryImage>();
+                string withImage = daily.ReadMarkdown(images);
+                Check(images.Count == 1 && withImage == plain + images[0].Marker && images[0].IsValid(), "Pasting inserts an actual image at the caret.");
+                Check(daily.Undo() && daily.ReadMarkdown() == plain, "An inline image can be undone with the text editor's Undo.");
+                daily.Redo();
+                Check(daily.ReadMarkdown() == withImage, "Redo restores the inline image and its attachment.");
                 Check(window.HasUnsavedSummary, "New summary content is tracked as a draft.");
                 window.Close();
                 window.ShowWorkspace();
-                Check(daily.Text.StartsWith("    ") && window.HasUnsavedSummary, "Hiding to the tray preserves the unsaved summary.");
+                Check(daily.ReadMarkdown() == withImage && window.HasUnsavedSummary, "Hiding to the tray preserves the unsaved summary and its image.");
                 Click(Descendants<Button>(window).Single(b => b.Content as string == "保存总结"));
-                Check(!window.HasUnsavedSummary && store.Load().FindSummary(DateTime.Today, false).Text == daily.Text,
-                    "The saved daily summary retains its formatting.");
+                var savedDaily = store.Load().FindSummary(DateTime.Today, false);
+                Check(!window.HasUnsavedSummary && savedDaily.Text == withImage && savedDaily.Images[0].Png == images[0].Png,
+                    "The saved daily summary retains its formatting and original image data.");
                 Click(Descendants<Button>(popup).Single(b => (string)b.Content == "写周报"));
                 Check(!popup.IsVisible && Find<DatePicker>(window, "选择周内任一天").SelectedDate == DateTime.Today,
                     "The weekly popup opens the corresponding week after the daily reminder.");
-                Find<TextBox>(window, "总结正文").Text = "本周完成核对和发布";
+                SetBody(Find<SummaryEditor>(window, "总结正文"), "本周完成核对和发布");
                 Click(Descendants<Button>(window).Single(b => b.Content as string == "保存总结"));
                 var sunday = WorkState.WeekStart(DateTime.Today).AddDays(6);
-                Check(window.OpenSummary(sunday, true) && Find<TextBox>(window, "总结正文").Text == "本周完成核对和发布",
+                Check(window.OpenSummary(sunday, true) && Find<SummaryEditor>(window, "总结正文").ReadMarkdown() == "本周完成核对和发布",
                     "A different day of the same week opens the existing weekly summary.");
+                window.OpenSummary(DateTime.Today, false);
+                var reopened = Find<SummaryEditor>(window, "总结正文");
+                var inline = reopened.Document.Blocks.OfType<Paragraph>().SelectMany(p => p.Inlines.OfType<InlineUIContainer>()).Single();
+                Check(inline.Tag is SummaryImage && ((Border)inline.Child).Child is Image, "Reopening the report restores the image inside the editor.");
+                var remove = ((Border)inline.Child).ContextMenu.Items.OfType<MenuItem>().Single(item => (string)item.Header == "移除图片");
+                remove.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                Check(reopened.ReadMarkdown() == plain && window.HasUnsavedSummary, "The image menu removes just that image.");
+                Click(Descendants<Button>(window).Single(b => b.Content as string == "保存总结"));
+                Check(store.Load().FindSummary(DateTime.Today, false).Images == null, "Saving after removal drops the unused image from the report.");
                 Click(window.Element<Button>("SettingsNav"));
+                window.UpdateLayout();
+                var weekday = Find<ComboBox>(window, "周报星期");
+                var dropdown = (ToggleButton)weekday.Template.FindName("DropDownToggle", weekday);
+                dropdown.SetCurrentValue(ToggleButton.IsCheckedProperty, true);
+                app.Dispatcher.Invoke(DispatcherPriority.Background, new Action(delegate { }));
+                Check(weekday.IsDropDownOpen && ((Popup)weekday.Template.FindName("PART_Popup", weekday)).IsOpen,
+                    "The redesigned weekday field opens its list.");
+                weekday.IsDropDownOpen = false;
                 Find<TextBox>(window, "日报时间（24 小时制）").Text = "25:00";
                 Click(Descendants<Button>(window).Single(b => b.Content as string == "保存提醒设置"));
                 Check(store.Load().Settings.DailyMinute == 0, "Invalid reminder settings are not written.");
@@ -154,6 +195,11 @@ namespace WorkDesk
                 Check(!app.Windows.OfType<ReminderPopup>().Any(), "The same task and summary reminders are not duplicated.");
             }
             window.Close();
+        }
+
+        private static void SetBody(SummaryEditor editor, string text)
+        {
+            new TextRange(editor.Document.ContentStart, editor.Document.ContentEnd).Text = text;
         }
 
         private static void WithEditor(Button button, Action<TaskEditor> steps)

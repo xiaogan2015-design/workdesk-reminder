@@ -6,19 +6,19 @@
 
 [下载 WorkDesk.exe](https://github.com/xiaogan2015-design/workdesk-reminder/raw/main/release/WorkDesk.exe)
 
-v1.0.0 · Windows 10／11 · .NET Framework 4.8 或 4.8.1。下载后可直接打开。
+v1.1.0 · Windows 10／11 · .NET Framework 4.8 或 4.8.1。更新前请先从托盘退出旧版，再打开新版。
 
-SHA-256：`50b00b2d0a4eff3eb3f8c98dfdf0cb818cba666557023b0848055386fe3be021`
+SHA-256：`cd802284444177ef64b92864f6b00429b2b84872fc651c12da256da892a7639a`
 
 ## 使用工笺
 
 - **工作台**点「新建事项」并设置可选截止时间。勾选完成会自动记录时间，可在「编辑」里补记或修正。清单可以复制或导出为 Markdown。
-- **工作总结**按日期写日报、按自然周写周报。单篇总结可复制或导出 Markdown。日报默认每天 17:00 提醒，周报可在设置中开启。
+- **工作总结**按日期写日报、按自然周写周报。在正文按 `Ctrl+V` 或点击「粘贴图片」，即可把截图插在光标处。右键图片可复制或移除。导出带图的 Markdown 时，把 `.md` 和它引用的图片文件夹一并分享。
 - **提醒设置**可调整排程、开启登录启动或导出全部备份。关闭窗口会回到托盘。彻底退出时，从托盘菜单选择「退出工笺」。
 
 ### 本地数据
 
-已保存的记录位于 `%LOCALAPPDATA%\WorkDesk\state.json`。设置页支持导出完整 JSON 备份或便于阅读和分享的 Markdown。导出的完整备份包含事项、总结、提醒设置和提示记录。
+已保存的记录位于 `%LOCALAPPDATA%\WorkDesk\state.json`。设置页支持导出完整 JSON 备份或便于阅读和分享的 Markdown。导出的完整备份包含事项、总结及图片、提醒设置和提示记录。
 
 手动恢复完整 JSON 备份时，先退出工笺并另存现有数据文件，再把选定的备份复制为 `%LOCALAPPDATA%\WorkDesk\state.json` 并重新打开工笺。
 

@@ -88,6 +88,13 @@ internal static class StateChecks
         var store = new StateStore(folder);
         var backup = new StateStore(Path.Combine(folder, "backup"));
         string markdownFile = Path.Combine(folder, "archive.md");
+        string picturesFile = Path.Combine(folder, "汇总 示例.md");
+        var image = new SummaryImage {
+            Id = Guid.NewGuid().ToString("N"),
+            Png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9a8AAAAASUVORK5CYII="
+        };
+        string picturesDirectory = null;
+        string pngFile = null;
         try
         {
             Check(store.Load().Tasks.Count == 0, "Fresh installation");
@@ -109,6 +116,19 @@ internal static class StateChecks
                 "JSON backup can be loaded as complete application data");
             MarkdownExport.Write(store, markdownFile, archive);
             Check(File.ReadAllText(markdownFile) == archive, "Markdown file preserves Chinese text and line breaks");
+            state.SetSummary(today, false, image.Marker, now.UtcDateTime, new System.Collections.Generic.List<SummaryImage> { image });
+            store.BackUp(backup.FilePath, state);
+            var imageBackup = backup.Load().FindSummary(today, false);
+            Check(imageBackup.Images.Single().Png == image.Png && imageBackup.Text == image.Marker, "JSON backups preserve image-only reports and their bytes");
+            string illustrated = MarkdownExport.Archive(state, now);
+            MarkdownExport.WriteWithImages(store, picturesFile, illustrated, imageBackup.Images);
+            picturesDirectory = Directory.GetDirectories(folder, "汇总 示例-图片-*").Single();
+            pngFile = Path.Combine(picturesDirectory, image.Id + ".png");
+            string link = Uri.EscapeDataString(Path.GetFileName(picturesDirectory)) + "/" + image.Id + ".png";
+            Check(File.ReadAllText(picturesFile).Contains(link) && File.ReadAllBytes(pngFile).SequenceEqual(image.ReadPng()),
+                "Markdown exports copy image bytes with portable relative links");
+            MarkdownExport.WriteWithImages(store, picturesFile, illustrated, imageBackup.Images);
+            Check(File.ReadAllText(picturesFile).Contains(link), "Re-exporting Markdown safely reuses the same image");
             try { MarkdownExport.Write(store, store.FilePath, archive); throw new Exception("The live file cannot be exported over."); }
             catch (IOException) { Check(store.Load().Tasks.Count == 3, "Export cannot replace the live state file"); }
         }
@@ -118,6 +138,9 @@ internal static class StateChecks
             File.Delete(store.FilePath + ".bak");
             File.Delete(store.FilePath + ".tmp");
             File.Delete(markdownFile);
+            File.Delete(picturesFile);
+            if (pngFile != null) File.Delete(pngFile);
+            if (Directory.Exists(picturesDirectory)) Directory.Delete(picturesDirectory);
             File.Delete(backup.FilePath);
             if (Directory.Exists(Path.GetDirectoryName(backup.FilePath))) Directory.Delete(Path.GetDirectoryName(backup.FilePath));
             if (Directory.Exists(folder)) Directory.Delete(folder);

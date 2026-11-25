@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace WorkDesk
@@ -49,6 +51,46 @@ namespace WorkDesk
             store.WriteExport(file, output => {
                 using (var writer = new StreamWriter(output, new UTF8Encoding(false), 1024, true)) writer.Write(data);
             });
+        }
+
+        public static string WithImages(string data, string file, IEnumerable<SummaryImage> images)
+        {
+            var ids = new HashSet<string>(images.Select(image => image.Id));
+            if (ids.Count == 0) return data;
+            string folder = Uri.EscapeDataString(ImageFolder(file, ids));
+            return SummaryImage.Reference.Replace(data, match => ids.Contains(match.Groups[1].Value)
+                ? "![截图](" + folder + "/" + match.Groups[1].Value + ".png)"
+                : match.Value);
+        }
+
+        public static void WriteWithImages(StateStore store, string file, string data, IEnumerable<SummaryImage> images)
+        {
+            var attachments = images.GroupBy(image => image.Id).Select(group => group.First()).ToArray();
+            if (attachments.Length != 0)
+            {
+                string folder = Path.Combine(Path.GetDirectoryName(file), ImageFolder(file, attachments.Select(image => image.Id)));
+                Directory.CreateDirectory(folder);
+                foreach (var image in attachments)
+                {
+                    string path = Path.Combine(folder, image.Id + ".png");
+                    byte[] png = image.ReadPng();
+                    if (File.Exists(path))
+                    {
+                        if (!File.ReadAllBytes(path).SequenceEqual(png))
+                            throw new IOException("图片目录中有同名文件，请换一个导出文件名。");
+                    }
+                    else store.WriteExport(path, output => output.Write(png, 0, png.Length));
+                }
+                data = WithImages(data, file, attachments);
+            }
+            Write(store, file, data);
+        }
+
+        private static string ImageFolder(string file, IEnumerable<string> ids)
+        {
+            byte[] bytes = Encoding.ASCII.GetBytes(String.Concat(ids.OrderBy(id => id, StringComparer.Ordinal)));
+            using (var hash = SHA256.Create())
+                return Path.GetFileNameWithoutExtension(file) + "-图片-" + BitConverter.ToString(hash.ComputeHash(bytes), 0, 6).Replace("-", "").ToLowerInvariant();
         }
 
         private static void AppendPlan(StringBuilder output, WorkState state, DateTimeOffset now, string heading)

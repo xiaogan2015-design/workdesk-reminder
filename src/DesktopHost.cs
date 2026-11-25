@@ -49,6 +49,8 @@ namespace WorkDesk
         private readonly Forms.NotifyIcon tray;
         private readonly Drawing.Icon icon;
         private readonly Forms.ContextMenuStrip menu;
+        private readonly Drawing.Bitmap openIcon;
+        private readonly Drawing.Bitmap exitIcon;
         private readonly DispatcherTimer timer;
         private readonly Queue<ReminderBatch> queue = new Queue<ReminderBatch>();
         private ReminderPopup popup;
@@ -62,10 +64,15 @@ namespace WorkDesk
             if (icon != null)
                 window.Icon = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(icon.Handle, Int32Rect.Empty,
                     System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
-            menu = new Forms.ContextMenuStrip();
-            menu.Items.Add("打开工笺", null, delegate { window.ShowWorkspace(); });
+            menu = new Forms.ContextMenuStrip {
+                Renderer = new TrayMenuRenderer(), Padding = new Forms.Padding(7),
+                ImageScalingSize = new Drawing.Size(16, 16), MinimumSize = new Drawing.Size(152, 0)
+            };
+            openIcon = TrayMenuRenderer.Icon("\uE80F", "#6040CB");
+            exitIcon = TrayMenuRenderer.Icon("\uE8AC", "#9D3E54");
+            AddTrayItem("打开工笺", openIcon, "#211A37", delegate { window.ShowWorkspace(); });
             menu.Items.Add(new Forms.ToolStripSeparator());
-            menu.Items.Add("退出工笺", null, delegate { Exit(); });
+            AddTrayItem("退出工笺", exitIcon, "#9D3E54", delegate { Exit(); });
             tray = new Forms.NotifyIcon { Icon = icon ?? Drawing.SystemIcons.Application, Text = "工笺 · WorkDesk", ContextMenuStrip = menu };
             tray.DoubleClick += delegate { window.ShowWorkspace(); };
             window.Closing += HideWindow;
@@ -73,6 +80,15 @@ namespace WorkDesk
 
             timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(5) };
             timer.Tick += delegate { Tick(DateTimeOffset.Now); };
+        }
+
+        private void AddTrayItem(string label, Drawing.Image image, string color, EventHandler action)
+        {
+            var item = new Forms.ToolStripMenuItem(label, image, action) {
+                AutoSize = false, Height = 37, Width = 162, Padding = new Forms.Padding(2),
+                ForeColor = Drawing.ColorTranslator.FromHtml(color)
+            };
+            menu.Items.Add(item);
         }
 
         public void Start()
@@ -141,7 +157,68 @@ namespace WorkDesk
             tray.Visible = false;
             tray.Dispose();
             menu.Dispose();
+            openIcon.Dispose();
+            exitIcon.Dispose();
             if (icon != null) icon.Dispose();
+        }
+    }
+
+    internal sealed class TrayMenuRenderer : Forms.ToolStripProfessionalRenderer
+    {
+        public TrayMenuRenderer() { RoundedEdges = false; }
+
+        protected override void OnRenderToolStripBackground(Forms.ToolStripRenderEventArgs e)
+        {
+            e.Graphics.Clear(Drawing.ColorTranslator.FromHtml("#FCFAFF"));
+        }
+
+        protected override void OnRenderImageMargin(Forms.ToolStripRenderEventArgs e) { }
+
+        protected override void OnRenderToolStripBorder(Forms.ToolStripRenderEventArgs e)
+        {
+            using (var pen = new Drawing.Pen(Drawing.ColorTranslator.FromHtml("#DFD7F1")))
+                e.Graphics.DrawRectangle(pen, 0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1);
+        }
+
+        protected override void OnRenderMenuItemBackground(Forms.ToolStripItemRenderEventArgs e)
+        {
+            if (!e.Item.Selected) return;
+            int width = e.Item.Width - 3;
+            int height = e.Item.Height - 3;
+            const int corner = 12;
+            if (width < corner || height < corner) return;
+            using (var outline = new Drawing.Drawing2D.GraphicsPath())
+            using (var fill = new Drawing.SolidBrush(Drawing.ColorTranslator.FromHtml("#EDE7FD")))
+            {
+                outline.AddArc(1, 1, corner, corner, 180, 90);
+                outline.AddArc(width - corner, 1, corner, corner, 270, 90);
+                outline.AddArc(width - corner, height - corner, corner, corner, 0, 90);
+                outline.AddArc(1, height - corner, corner, corner, 90, 90);
+                outline.CloseFigure();
+                var previous = e.Graphics.SmoothingMode;
+                e.Graphics.SmoothingMode = Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                e.Graphics.FillPath(fill, outline);
+                e.Graphics.SmoothingMode = previous;
+            }
+        }
+
+        protected override void OnRenderSeparator(Forms.ToolStripSeparatorRenderEventArgs e)
+        {
+            using (var pen = new Drawing.Pen(Drawing.ColorTranslator.FromHtml("#E9E1F4")))
+                e.Graphics.DrawLine(pen, 7, e.Item.Height / 2, e.Item.Width - 7, e.Item.Height / 2);
+        }
+
+        public static Drawing.Bitmap Icon(string glyph, string color)
+        {
+            var bitmap = new Drawing.Bitmap(16, 16);
+            using (var drawing = Drawing.Graphics.FromImage(bitmap))
+            using (var font = new Drawing.Font("Segoe MDL2 Assets", 13, Drawing.GraphicsUnit.Pixel))
+            using (var brush = new Drawing.SolidBrush(Drawing.ColorTranslator.FromHtml(color)))
+            {
+                drawing.TextRenderingHint = Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                drawing.DrawString(glyph, font, brush, 0, 0, Drawing.StringFormat.GenericTypographic);
+            }
+            return bitmap;
         }
     }
 

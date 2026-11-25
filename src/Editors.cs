@@ -33,6 +33,15 @@ namespace WorkDesk
             return new Border { Style = Style("Card"), Child = content };
         }
 
+        public static Border FormGroup(UIElement content)
+        {
+            return new Border {
+                Background = Color("#F7F4FC"), BorderBrush = Color("#EBE5F5"), BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(10), Padding = new Thickness(13, 11, 13, 11),
+                Margin = new Thickness(0, 10, 0, 0), Child = content
+            };
+        }
+
         public static void Label(Panel panel, string label, FrameworkElement control)
         {
             var caption = Text(label);
@@ -72,7 +81,7 @@ namespace WorkDesk
             date.SelectedDateChanged += delegate { invalidDate = false; };
             date.PreviewKeyDown += delegate { invalidDate = false; };
             time = new TextBox {
-                Text = local.ToString("HH:mm", CultureInfo.InvariantCulture), Width = 72, MaxLength = 5,
+                Text = local.ToString("HH:mm", CultureInfo.InvariantCulture), Width = 76, MaxLength = 5,
                 Margin = new Thickness(8, 0, 0, 0), VerticalContentAlignment = VerticalAlignment.Center
             };
             AutomationProperties.SetName(date, name + "日期");
@@ -135,7 +144,7 @@ namespace WorkDesk
             ResizeMode = ResizeMode.NoResize;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             ShowInTaskbar = false;
-            Width = 500;
+            Width = 520;
             MaxHeight = SystemParameters.WorkArea.Height;
             SizeToContent = SizeToContent.Height;
 
@@ -147,13 +156,16 @@ namespace WorkDesk
             dueInput = new DateTimeInput("截止", original.DueUtc.HasValue ? original.DueUtc.Value.ToLocalTime() : DateTime.Now.AddHours(1));
             completedInput = new DateTimeInput("完成", original.CompletedUtc.HasValue ? original.CompletedUtc.Value.ToLocalTime() : DateTime.Now);
 
-            var form = new StackPanel { Margin = new Thickness(21, 15, 21, 17) };
+            var form = new StackPanel();
             form.Children.Add(new TextBlock { Text = Title, FontWeight = FontWeights.Bold, FontSize = 23 });
             Ui.Label(form, "事项标题", title);
             Ui.Label(form, "备注（选填）", notes);
-            scheduled.Margin = new Thickness(0, 15, 0, 7);
-            form.Children.Add(scheduled);
+            scheduled.Style = Ui.Style("FormToggle");
+            completed.Style = Ui.Style("FormToggle");
+            var schedulePanel = new StackPanel();
+            schedulePanel.Children.Add(scheduled);
             var scheduleFields = new StackPanel();
+            scheduleFields.Margin = new Thickness(0, 9, 0, 0);
             scheduleFields.Children.Add(dueInput);
             var leadRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 7, 0, 0) };
             leadRow.Children.Add(new TextBlock { Text = "提前", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0) });
@@ -161,10 +173,13 @@ namespace WorkDesk
             leadRow.Children.Add(lead);
             leadRow.Children.Add(new TextBlock { Text = "分钟提醒（0 为到点提醒）", Style = Ui.Style("Hint"), Margin = new Thickness(7, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
             scheduleFields.Children.Add(leadRow);
-            form.Children.Add(scheduleFields);
-            completed.Margin = new Thickness(0, 15, 0, 7);
-            form.Children.Add(completed);
-            form.Children.Add(completedInput);
+            schedulePanel.Children.Add(scheduleFields);
+            form.Children.Add(Ui.FormGroup(schedulePanel));
+            var completionPanel = new StackPanel();
+            completionPanel.Children.Add(completed);
+            completedInput.Margin = new Thickness(0, 9, 0, 0);
+            completionPanel.Children.Add(completedInput);
+            form.Children.Add(Ui.FormGroup(completionPanel));
 
             Action updateFields = delegate {
                 scheduleFields.Visibility = scheduled.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
@@ -194,7 +209,9 @@ namespace WorkDesk
             DockPanel.SetDock(cancel, Dock.Right);
             actions.Children.Add(cancel);
             form.Children.Add(actions);
-            Content = new ScrollViewer { Content = form, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+            var card = Ui.Card(form);
+            card.Margin = new Thickness(13);
+            Content = new ScrollViewer { Content = card, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             Loaded += delegate { Keyboard.Focus(title); };
         }
 

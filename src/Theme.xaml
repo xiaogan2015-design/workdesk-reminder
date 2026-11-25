@@ -79,26 +79,150 @@
         <Setter Property="Foreground" Value="White" />
     </Style>
 
-    <Style TargetType="TextBox">
-        <Setter Property="Background" Value="White" />
+    <Style x:Key="InputSurface" TargetType="TextBoxBase">
+        <Setter Property="Background" Value="#FCFBFF" />
         <Setter Property="Foreground" Value="{StaticResource Ink}" />
-        <Setter Property="BorderBrush" Value="#DAD4E9" />
+        <Setter Property="BorderBrush" Value="#DDD6EC" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Padding" Value="9,7" />
+        <Setter Property="Padding" Value="10,7" />
         <Setter Property="FontSize" Value="14" />
+        <Setter Property="MinHeight" Value="36" />
         <Setter Property="SelectionBrush" Value="{StaticResource Violet}" />
-        <Style.Triggers>
-            <Trigger Property="IsKeyboardFocused" Value="True"><Setter Property="BorderBrush" Value="{StaticResource Violet}" /></Trigger>
-        </Style.Triggers>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBoxBase">
+                    <Border x:Name="Field" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8">
+                        <ScrollViewer x:Name="PART_ContentHost" Focusable="False" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="Field" Property="BorderBrush" Value="#896CDD" />
+                            <Setter TargetName="Field" Property="Background" Value="White" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Field" Property="Opacity" Value="0.56" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style TargetType="TextBox" BasedOn="{StaticResource InputSurface}" />
+    <Style x:Key="SummarySurface" TargetType="RichTextBox" BasedOn="{StaticResource InputSurface}">
+        <Setter Property="Padding" Value="13,11" />
+    </Style>
+    <Style x:Key="CalendarText" TargetType="DatePickerTextBox">
+        <Setter Property="Foreground" Value="{StaticResource Ink}" />
+        <Setter Property="SelectionBrush" Value="{StaticResource Violet}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="DatePickerTextBox">
+                    <Grid VerticalAlignment="Center">
+                        <ScrollViewer x:Name="PART_ContentHost" Focusable="False" />
+                        <ContentControl x:Name="PART_Watermark" FontSize="12" Foreground="{StaticResource Muted}"
+                                        Focusable="False" IsHitTestVisible="False" Visibility="Collapsed" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="Text" Value=""><Setter TargetName="PART_Watermark" Property="Visibility" Value="Visible" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
     <Style TargetType="DatePicker">
-        <Setter Property="MinHeight" Value="31" />
+        <Setter Property="MinHeight" Value="36" />
         <Setter Property="FontSize" Value="14" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="DatePicker">
+                    <Grid x:Name="PART_Root">
+                        <Border x:Name="Field" CornerRadius="8" BorderThickness="1" BorderBrush="#DDD6EC" Background="#FCFBFF" Padding="9,3,3,3">
+                            <DockPanel>
+                                <Button x:Name="PART_Button" DockPanel.Dock="Right" Width="29" Padding="0" Style="{StaticResource Quiet}"
+                                        AutomationProperties.Name="打开日历">
+                                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE787;" FontSize="14" />
+                                </Button>
+                                <DatePickerTextBox x:Name="PART_TextBox" Style="{StaticResource CalendarText}" Margin="0,0,5,0" />
+                            </DockPanel>
+                        </Border>
+                        <Popup x:Name="PART_Popup" Placement="Bottom" PlacementTarget="{Binding ElementName=PART_Root}" AllowsTransparency="True" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Field" Property="BorderBrush" Value="#896CDD" /></Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Field" Property="Opacity" Value="0.56" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style TargetType="ComboBox">
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Padding" Value="9,5" />
+        <Setter Property="Background" Value="#FCFBFF" />
+        <Setter Property="Foreground" Value="{StaticResource Ink}" />
+        <Setter Property="BorderBrush" Value="#DDD6EC" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid>
+                        <Border x:Name="Field" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1" CornerRadius="8">
+                            <Grid>
+                                <ToggleButton x:Name="DropDownToggle" Focusable="False" Cursor="Hand"
+                                      IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                    <ToggleButton.Template><ControlTemplate TargetType="ToggleButton"><Border Background="Transparent" /></ControlTemplate></ToggleButton.Template>
+                                </ToggleButton>
+                                <DockPanel Margin="{TemplateBinding Padding}" IsHitTestVisible="False">
+                                    <TextBlock DockPanel.Dock="Right" FontFamily="Segoe MDL2 Assets" Text="&#xE70D;" FontSize="11"
+                                               VerticalAlignment="Center" Foreground="{StaticResource Violet}" Margin="6,0,2,0" />
+                                    <ContentPresenter Content="{TemplateBinding SelectionBoxItem}" VerticalAlignment="Center" />
+                                </DockPanel>
+                            </Grid>
+                        </Border>
+                        <Popup x:Name="PART_Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" Focusable="False" AllowsTransparency="True">
+                            <Border MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                                    Background="White" BorderBrush="#DDD6EC" BorderThickness="1" CornerRadius="8" Padding="3" Margin="0,4,0,0">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto"><ItemsPresenter /></ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Field" Property="BorderBrush" Value="#896CDD" /></Trigger>
+                        <Trigger Property="IsDropDownOpen" Value="True"><Setter TargetName="Field" Property="BorderBrush" Value="#896CDD" /></Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Field" Property="Opacity" Value="0.56" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
     <Style TargetType="CheckBox">
         <Setter Property="Foreground" Value="{StaticResource Ink}" />
         <Setter Property="FontSize" Value="14" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style x:Key="FormToggle" TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <StackPanel Orientation="Horizontal" Background="Transparent">
+                        <Border x:Name="Track" Width="34" Height="20" CornerRadius="10" Background="#D9D2E9"
+                                BorderBrush="Transparent" BorderThickness="1" Padding="2" Margin="0,0,9,0">
+                            <Ellipse x:Name="Thumb" Width="14" Height="14" Fill="White" HorizontalAlignment="Left" />
+                        </Border>
+                        <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="True" />
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Track" Property="Background" Value="{StaticResource Violet}" />
+                            <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Track" Property="BorderBrush" Value="#30205D" /></Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Track" Property="Opacity" Value="0.52" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 </ResourceDictionary>

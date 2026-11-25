@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
+using System.Text.RegularExpressions;
 
 namespace WorkDesk
 {
@@ -59,6 +60,40 @@ namespace WorkDesk
         [DataMember] public string Period;
         [DataMember] public string Text;
         [DataMember] public DateTime UpdatedUtc;
+        [DataMember(EmitDefaultValue = false)] public List<SummaryImage> Images;
+    }
+
+    [DataContract]
+    internal sealed class SummaryImage
+    {
+        public const int MaxEdge = 4096;
+        public const int MaxBytes = 12 * 1024 * 1024;
+        private static readonly byte[] PngHeader = { 137, 80, 78, 71, 13, 10, 26, 10 };
+        public static readonly Regex Reference = new Regex(@"!\[截图\]\(workdesk-image:([0-9a-f]{32})\)", RegexOptions.CultureInvariant);
+
+        [DataMember] public string Id;
+        [DataMember] public string Png;
+
+        public string Marker { get { return "![截图](workdesk-image:" + Id + ")"; } }
+        public byte[] ReadPng() { return Convert.FromBase64String(Png); }
+
+        public bool IsValid()
+        {
+            Guid id;
+            if (!Guid.TryParseExact(Id, "N", out id) || id.ToString("N") != Id ||
+                String.IsNullOrEmpty(Png) || Png.Length > MaxBytes / 3 * 4) return false;
+            byte[] png;
+            try { png = ReadPng(); }
+            catch (FormatException) { return false; }
+            return png.Length >= 24 && png.Take(PngHeader.Length).SequenceEqual(PngHeader) &&
+                ValidEdge(png, 16) && ValidEdge(png, 20);
+        }
+
+        private static bool ValidEdge(byte[] png, int offset)
+        {
+            uint edge = ((uint)png[offset] << 24) | ((uint)png[offset + 1] << 16) | ((uint)png[offset + 2] << 8) | png[offset + 3];
+            return edge > 0 && edge <= MaxEdge;
+        }
     }
 
     [DataContract]
@@ -108,12 +143,13 @@ namespace WorkDesk
             return Summaries.Find(s => s.Weekly == weekly && s.Period == period);
         }
 
-        public void SetSummary(DateTime date, bool weekly, string text, DateTime updatedUtc)
+        public void SetSummary(DateTime date, bool weekly, string text, DateTime updatedUtc, List<SummaryImage> images = null)
         {
             var summary = FindSummary(date, weekly);
             if (summary != null) Summaries.Remove(summary);
             Summaries.Add(new WorkSummary {
-                Period = PeriodKey(date, weekly), Weekly = weekly, Text = text, UpdatedUtc = updatedUtc
+                Period = PeriodKey(date, weekly), Weekly = weekly, Text = text, UpdatedUtc = updatedUtc,
+                Images = images != null && images.Count != 0 ? new List<SummaryImage>(images) : null
             });
         }
 
@@ -181,6 +217,13 @@ namespace WorkDesk
                     !DateTime.TryParseExact(summary.Period, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date) ||
                     summary.Period != PeriodKey(date, summary.Weekly) || !summaryKeys.Add(summary.Weekly + summary.Period))
                     throw new InvalidDataException("Invalid WorkDesk summary.");
+                if (summary.Images != null)
+                {
+                    var ids = new HashSet<string>();
+                    foreach (var image in summary.Images)
+                        if (image == null || !image.IsValid() || !ids.Add(image.Id) || !summary.Text.Contains(image.Marker))
+                            throw new InvalidDataException("Invalid WorkDesk summary image.");
+                }
             }
         }
     }
