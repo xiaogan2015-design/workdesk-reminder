@@ -42,7 +42,12 @@ namespace WorkDesk
 
         public bool ShouldRemind(DateTime nowUtc)
         {
-            return !CompletedUtc.HasValue && !ReminderShown && DueUtc.HasValue &&
+            return !CompletedUtc.HasValue && !ReminderShown && WithinReminderWindow(nowUtc);
+        }
+
+        public bool WithinReminderWindow(DateTime nowUtc)
+        {
+            return DueUtc.HasValue &&
                 (DueUtc.Value - nowUtc).TotalMinutes <= LeadMinutes;
         }
     }
@@ -217,15 +222,35 @@ namespace WorkDesk
         public void Save(WorkState state)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path));
-            string temporary = path + ".tmp";
+            WriteAtomic(path, path + ".tmp", recovered ? null : path + ".bak", output => serializer.WriteObject(output, state));
+            recovered = false;
+        }
+
+        public void BackUp(string destination, WorkState state)
+        {
+            WriteExport(destination, output => serializer.WriteObject(output, state));
+        }
+
+        public void WriteExport(string destination, Action<Stream> write)
+        {
+            destination = Path.GetFullPath(destination);
+            string livePath = Path.GetFullPath(path);
+            if (new[] { livePath, livePath + ".bak", livePath + ".tmp" }.Contains(destination, StringComparer.OrdinalIgnoreCase))
+                throw new IOException("请选择其他位置，避免覆盖工笺正在使用的数据文件。");
+            string temporary = Path.Combine(Path.GetDirectoryName(destination), ".workdesk-" + Guid.NewGuid().ToString("N") + ".tmp");
+            try { WriteAtomic(destination, temporary, null, write); }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }
+
+        private static void WriteAtomic(string target, string temporary, string backup, Action<Stream> write)
+        {
             using (var output = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))
             {
-                serializer.WriteObject(output, state);
+                write(output);
                 output.Flush(true);
             }
-            if (File.Exists(path)) File.Replace(temporary, path, recovered ? null : path + ".bak");
-            else File.Move(temporary, path);
-            recovered = false;
+            if (File.Exists(target)) File.Replace(temporary, target, backup);
+            else File.Move(temporary, target);
         }
     }
 }

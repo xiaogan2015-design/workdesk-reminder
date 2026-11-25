@@ -109,6 +109,7 @@ namespace WorkDesk
     internal sealed class TaskEditor : Window
     {
         private readonly WorkItem original;
+        private readonly Func<WorkItem, bool> persist;
         private readonly TextBox title = new TextBox { MaxLength = 120 };
         private readonly TextBox notes = new TextBox {
             AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 64, MaxHeight = 98,
@@ -121,12 +122,10 @@ namespace WorkDesk
         private readonly DateTimeInput completedInput;
         private readonly TextBlock error = Ui.Text("", "Hint");
 
-        public WorkItem Result { get; private set; }
-        public bool DeleteRequested { get; private set; }
-
-        public TaskEditor(Window owner, WorkItem item)
+        public TaskEditor(Window owner, WorkItem item, Func<WorkItem, bool> persist)
         {
             original = item ?? new WorkItem();
+            this.persist = persist;
             Owner = owner;
             Title = item == null ? "新建事项" : "编辑事项";
             FontFamily = owner.FontFamily;
@@ -227,20 +226,21 @@ namespace WorkDesk
                 }
                 finished = value;
             }
-            Result = original.Copy();
-            Result.Title = name;
-            Result.Notes = notes.Text.Trim();
-            Result.SetSchedule(deadline, minutes);
-            Result.SetCompletion(finished);
-            DialogResult = true;
+            var result = original.Copy();
+            result.Title = name;
+            result.Notes = notes.Text.Trim();
+            result.SetSchedule(deadline, minutes);
+            result.SetCompletion(finished);
+            if (persist(result)) DialogResult = true;
+            else error.Text = "事项未保存。请检查数据文件的访问权限和磁盘空间后重试。";
         }
 
         private void Delete(object sender, RoutedEventArgs e)
         {
             if (MessageBox.Show(this, "删除后将从事项清单中移除。", "删除事项", MessageBoxButton.YesNo,
                 MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
-            DeleteRequested = true;
-            DialogResult = true;
+            if (persist(null)) DialogResult = true;
+            else error.Text = "删除未保存。请检查数据文件的访问权限和磁盘空间后重试。";
         }
     }
 }

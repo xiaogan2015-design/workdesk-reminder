@@ -92,6 +92,68 @@ namespace WorkDesk
             reopened.Show();
             Check(reopened.Element<TextBlock>("PendingCount").Text == "1", "Opening a fresh window loads the saved pending state.");
             reopened.Close();
+
+            CheckSummariesAndReminders(store);
+        }
+
+        private static void CheckSummariesAndReminders(StateStore store)
+        {
+            var settings = new ReminderSettings {
+                DailyEnabled = true, DailyMinute = 0, WeeklyEnabled = true, WeeklyMinute = 0, WeeklyDay = DateTime.Today.DayOfWeek
+            };
+            var state = store.Load();
+            state.Settings = settings;
+            state.Tasks[0].SetSchedule(DateTime.UtcNow.AddMinutes(-1), 0);
+            store.Save(state);
+            var app = Application.Current;
+            var window = new MainWindow(store, store.Load());
+            app.MainWindow = window;
+            using (var host = new DesktopHost(app, window))
+            {
+                window.Show();
+                host.Start();
+                window.Close();
+                Check(!window.IsVisible && app.Windows.OfType<MainWindow>().Contains(window), "Closing leaves the window running in the tray.");
+                app.Dispatcher.Invoke(DispatcherPriority.SystemIdle, new Action(delegate { }));
+                var popup = app.Windows.OfType<ReminderPopup>().Single();
+                Check(popup.IsVisible && popup.ShowActivated == false && popup.Topmost, "Reminders open a visible non-activating popup while the main window is hidden.");
+                var displayed = store.Load();
+                Check(displayed.Tasks[0].ReminderShown && displayed.LastDailyReminder != null && displayed.LastWeeklyReminder != null,
+                    "The independent reminder markers are saved before the popup.");
+                Click(Descendants<Button>(popup).Single(b => (string)b.Content == "打开事项"));
+                Check(window.IsVisible && window.Element<TextBlock>("PageTitle").Text == "工作台", "The deadline popup reopens the workbench.");
+                Check(popup.IsVisible, "Opening the tasks keeps simultaneous report reminders available.");
+                Click(Descendants<Button>(popup).Single(b => (string)b.Content == "写日报"));
+                Check(window.Element<TextBlock>("PageTitle").Text == "工作总结" &&
+                    Find<DatePicker>(window, "总结日期").SelectedDate == DateTime.Today, "The daily popup opens today's editor.");
+                var daily = Find<TextBox>(window, "总结正文");
+                daily.Text = "    已完成核对\n\n- 待同步";
+                Check(window.HasUnsavedSummary, "New summary content is tracked as a draft.");
+                window.Close();
+                window.ShowWorkspace();
+                Check(daily.Text.StartsWith("    ") && window.HasUnsavedSummary, "Hiding to the tray preserves the unsaved summary.");
+                Click(Descendants<Button>(window).Single(b => b.Content as string == "保存总结"));
+                Check(!window.HasUnsavedSummary && store.Load().FindSummary(DateTime.Today, false).Text == daily.Text,
+                    "The saved daily summary retains its formatting.");
+                Click(Descendants<Button>(popup).Single(b => (string)b.Content == "写周报"));
+                Check(!popup.IsVisible && Find<DatePicker>(window, "选择周内任一天").SelectedDate == DateTime.Today,
+                    "The weekly popup opens the corresponding week after the daily reminder.");
+                Find<TextBox>(window, "总结正文").Text = "本周完成核对和发布";
+                Click(Descendants<Button>(window).Single(b => b.Content as string == "保存总结"));
+                var sunday = WorkState.WeekStart(DateTime.Today).AddDays(6);
+                Check(window.OpenSummary(sunday, true) && Find<TextBox>(window, "总结正文").Text == "本周完成核对和发布",
+                    "A different day of the same week opens the existing weekly summary.");
+                Click(window.Element<Button>("SettingsNav"));
+                Find<TextBox>(window, "日报时间（24 小时制）").Text = "25:00";
+                Click(Descendants<Button>(window).Single(b => b.Content as string == "保存提醒设置"));
+                Check(store.Load().Settings.DailyMinute == 0, "Invalid reminder settings are not written.");
+                Find<TextBox>(window, "日报时间（24 小时制）").Text = "17:30";
+                Click(Descendants<Button>(window).Single(b => b.Content as string == "保存提醒设置"));
+                Check(store.Load().Settings.DailyMinute == 1050, "Edited reminder settings are saved.");
+                host.Tick(DateTimeOffset.Now);
+                Check(!app.Windows.OfType<ReminderPopup>().Any(), "The same task and summary reminders are not duplicated.");
+            }
+            window.Close();
         }
 
         private static void WithEditor(Button button, Action<TaskEditor> steps)

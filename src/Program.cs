@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Reflection;
+using System.Threading;
 using System.Windows;
 using System.Windows.Markup;
 
@@ -15,14 +16,41 @@ namespace WorkDesk
     internal static class Program
     {
         [STAThread]
-        public static int Main()
+        public static int Main(string[] args)
         {
             var store = new StateStore(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WorkDesk"));
             try
             {
-                var application = new Application();
-                LoadTheme(application);
-                return application.Run(new MainWindow(store, store.Load()));
+                using (var mutex = new Mutex(false, @"Local\WorkDesk.Instance.v1"))
+                using (var activation = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\WorkDesk.Activate.v1"))
+                {
+                    bool ownsMutex;
+                    try { ownsMutex = mutex.WaitOne(0); }
+                    catch (AbandonedMutexException) { ownsMutex = true; }
+                    if (!ownsMutex) { activation.Set(); return 0; }
+
+                    try
+                    {
+                        var application = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+                        LoadTheme(application);
+                        var window = new MainWindow(store, store.Load());
+                        application.MainWindow = window;
+                        var registered = ThreadPool.RegisterWaitForSingleObject(activation, delegate {
+                            application.Dispatcher.BeginInvoke(new Action(window.ShowWorkspace));
+                        }, null, Timeout.Infinite, false);
+                        try
+                        {
+                            using (var desktop = new DesktopHost(application, window))
+                            {
+                                if (Array.IndexOf(args, "--tray") < 0) window.ShowWorkspace();
+                                desktop.Start();
+                                return application.Run();
+                            }
+                        }
+                        finally { registered.Unregister(null); }
+                    }
+                    finally { mutex.ReleaseMutex(); }
+                }
             }
             catch (Exception ex)
             {

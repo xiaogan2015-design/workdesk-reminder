@@ -73,9 +73,21 @@ internal static class StateChecks
         Check(state.Summaries.Count == 2 && state.FindSummary(today.AddDays(-4), true).Text == "本周工作已更新", "One summary per Monday-based week");
         Check(!state.CollectReminders(now).Daily && !state.CollectReminders(now).Weekly, "Existing summaries suppress reminders");
         Check(WorkState.PeriodKey(new DateTime(2027, 1, 1), true) == "2026-12-28", "Week across year boundary");
+        state.Tasks.Single(t => t.Id == unscheduled.Id).Title = "整理 [资料]";
+        state.Tasks.Single(t => t.Id == unscheduled.Id).SetCompletion(now.UtcDateTime);
+        string plan = MarkdownExport.Plan(state, now);
+        Check(plan.Contains("- [ ] 复核发布清单") && plan.Contains("- [x] 整理 \\[资料\\]") && plan.Contains("完成时间："), "Markdown plan preserves status, times, and literal titles");
+        string formatted = "    保留 Markdown 缩进\r\n\r\n- 工作事项";
+        string dailyMarkdown = MarkdownExport.Summary(false, today, formatted);
+        Check(dailyMarkdown.Contains("日报 · 2026-11-27\n\n    保留 Markdown 缩进\n\n- 工作事项"), "Individual Markdown preserves formatting");
+        string archive = MarkdownExport.Archive(state, now);
+        Check(archive.Contains("日报 · 2026-11-27") && archive.Contains("周报 · 2026-11-23 至 2026-11-29") &&
+            archive.Contains("本周工作已更新") && archive.Contains("复核发布清单"), "Archive contains tasks and reports");
 
         var folder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WorkDesk.Checks." + Guid.NewGuid().ToString("N"));
         var store = new StateStore(folder);
+        var backup = new StateStore(Path.Combine(folder, "backup"));
+        string markdownFile = Path.Combine(folder, "archive.md");
         try
         {
             Check(store.Load().Tasks.Count == 0, "Fresh installation");
@@ -90,12 +102,24 @@ internal static class StateChecks
             Check(recovery.Load().LastDailyReminder != null && recovery.Recovered, "Read prior version when primary is corrupt");
             recovery.Save(state);
             Check(!recovery.Recovered && new StateStore(folder).Load().Summaries.Count == 2, "Restore primary without replacing last valid backup");
+            Directory.CreateDirectory(Path.GetDirectoryName(backup.FilePath));
+            store.BackUp(backup.FilePath, state);
+            var backupState = backup.Load();
+            Check(backupState.Tasks.Count == state.Tasks.Count && backupState.Summaries.Count == 2 && backupState.Settings.WeeklyEnabled,
+                "JSON backup can be loaded as complete application data");
+            MarkdownExport.Write(store, markdownFile, archive);
+            Check(File.ReadAllText(markdownFile) == archive, "Markdown file preserves Chinese text and line breaks");
+            try { MarkdownExport.Write(store, store.FilePath, archive); throw new Exception("The live file cannot be exported over."); }
+            catch (IOException) { Check(store.Load().Tasks.Count == 3, "Export cannot replace the live state file"); }
         }
         finally
         {
             File.Delete(store.FilePath);
             File.Delete(store.FilePath + ".bak");
             File.Delete(store.FilePath + ".tmp");
+            File.Delete(markdownFile);
+            File.Delete(backup.FilePath);
+            if (Directory.Exists(Path.GetDirectoryName(backup.FilePath))) Directory.Delete(Path.GetDirectoryName(backup.FilePath));
             if (Directory.Exists(folder)) Directory.Delete(folder);
         }
         Console.WriteLine("Passed {0} state and reminder checks.", assertions);

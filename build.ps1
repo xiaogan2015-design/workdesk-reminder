@@ -13,6 +13,8 @@ $exe = Join-Path $output 'WorkDesk.exe'
 $sources = (Get-ChildItem -LiteralPath $src -Filter '*.cs' -File).FullName
 $references = @(
     '/r:System.Runtime.Serialization.dll'
+    '/r:System.Drawing.dll'
+    '/r:System.Windows.Forms.dll'
     "/r:$wpf\WindowsBase.dll"
     "/r:$wpf\PresentationCore.dll"
     "/r:$wpf\PresentationFramework.dll"

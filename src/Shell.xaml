@@ -65,7 +65,13 @@
                         <Grid.ColumnDefinitions><ColumnDefinition Width="2.18*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*" MinWidth="197"/></Grid.ColumnDefinitions>
                         <Border x:Name="TaskCard" Style="{StaticResource Card}" Padding="17,16" MinHeight="221" VerticalAlignment="Top">
                             <StackPanel>
-                                <TextBlock Text="事项清单" Style="{StaticResource SectionTitle}" Margin="0,0,0,12" />
+                                <DockPanel Margin="0,0,0,12">
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                        <Button x:Name="CopyPlan" Content="复制清单" Padding="9,5" Margin="0,0,6,0" ToolTip="复制全部待办和已完成事项为 Markdown" />
+                                        <Button x:Name="ExportPlan" Content="导出清单" Padding="9,5" ToolTip="将全部事项导出为 Markdown 文件" />
+                                    </StackPanel>
+                                    <TextBlock Text="事项清单" Style="{StaticResource SectionTitle}" VerticalAlignment="Center" />
+                                </DockPanel>
                                 <WrapPanel x:Name="Filters" Margin="0,0,0,11" />
                                 <StackPanel x:Name="TaskRows" />
                             </StackPanel>

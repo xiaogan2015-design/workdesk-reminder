@@ -17,6 +17,7 @@ namespace WorkDesk
         private WorkState state;
         private TaskFilter filter;
         private TaskEditor taskEditor;
+        private long clockMinute;
 
         public MainWindow(StateStore store, WorkState state)
         {
@@ -35,12 +36,9 @@ namespace WorkDesk
             Content = shell;
 
             Element<Button>("NewTask").Click += delegate { EditTask(null); };
-            Element<Button>("SummaryNav").Visibility = Visibility.Collapsed;
-            Element<Button>("SettingsNav").Visibility = Visibility.Collapsed;
-            Element<StackPanel>("RightColumn").Visibility = Visibility.Collapsed;
-            Grid.SetColumnSpan(Element<Border>("TaskCard"), 3);
+            InitializePages();
             PreviewKeyDown += delegate(object sender, KeyEventArgs e) {
-                if (e.Key == Key.N && Keyboard.Modifiers == ModifierKeys.Control && taskEditor == null)
+                if (e.Key == Key.N && Keyboard.Modifiers == ModifierKeys.Control && page == DeskPage.Desk && taskEditor == null)
                 {
                     e.Handled = true;
                     EditTask(null);
@@ -53,6 +51,23 @@ namespace WorkDesk
 
         internal WorkState State { get { return state; } }
         internal T Element<T>(string name) where T : FrameworkElement { return (T)shell.FindName(name); }
+
+        internal void ShowWorkspace()
+        {
+            if (taskEditor != null) { taskEditor.Activate(); return; }
+            if (!IsVisible) Show();
+            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+            Activate();
+        }
+
+        internal void RefreshClock(DateTimeOffset now)
+        {
+            long minute = now.Ticks / TimeSpan.TicksPerMinute;
+            if (clockMinute == minute) return;
+            clockMinute = minute;
+            if (page == DeskPage.Desk) RefreshDashboard();
+            else Element<TextBlock>("DateLabel").Text = now.ToString("M月d日 dddd", Chinese);
+        }
 
         internal void Banner(string message)
         {
@@ -91,6 +106,7 @@ namespace WorkDesk
             Element<TextBlock>("CompletedCount").Text = finished.ToString(Chinese);
             Element<TextBlock>("HeroStatus").Text = pending == 0 ? "当前没有待处理的事项" :
                 String.Format(Chinese, "{0} 项待处理，{1} 项已逾期", pending, overdue);
+            RefreshSideCards(now.Date);
             RenderFilters();
             RenderRows(now);
         }
@@ -165,6 +181,7 @@ namespace WorkDesk
             meta.Margin = new Thickness(0, 3, 0, 0);
             if (item.IsOverdue(now.UtcDateTime)) meta.Foreground = Ui.Color("#A23B28");
             else if (item.CompletedUtc.HasValue) meta.Foreground = Ui.Color("#13745A");
+            else if (item.WithinReminderWindow(now.UtcDateTime)) meta.Foreground = Ui.Color("#92501A");
             details.Children.Add(meta);
             if (!String.IsNullOrWhiteSpace(item.Notes))
             {
@@ -189,7 +206,8 @@ namespace WorkDesk
                 return "完成于 " + item.CompletedUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", Chinese) +
                     (deadline == null ? "" : "  ·  原定 " + deadline);
             if (deadline == null) return "无截止时间";
-            return (item.IsOverdue(now.UtcDateTime) ? "已逾期  ·  " : "截止  ·  ") + deadline;
+            if (item.IsOverdue(now.UtcDateTime)) return "已逾期  ·  " + deadline;
+            return (item.WithinReminderWindow(now.UtcDateTime) ? "即将到期  ·  " : "截止  ·  ") + deadline;
         }
 
         private void ToggleCompletion(string id, bool completed)
@@ -207,28 +225,29 @@ namespace WorkDesk
             if (taskEditor != null) return;
             var item = id == null ? null : state.Tasks.Find(t => t.Id == id);
             if (id != null && item == null) return;
-            var editor = new TaskEditor(this, item);
+            var editor = new TaskEditor(this, item, result => PersistTask(id, result));
             taskEditor = editor;
-            bool saved;
-            try { saved = editor.ShowDialog() == true; }
+            try { editor.ShowDialog(); }
             finally { taskEditor = null; }
-            if (!saved) return;
+        }
+
+        private bool PersistTask(string id, WorkItem result)
+        {
             var next = state.Copy();
-            if (editor.DeleteRequested) next.Tasks.RemoveAll(t => t.Id == id);
-            else if (item == null) next.Tasks.Add(editor.Result);
+            if (result == null) next.Tasks.RemoveAll(t => t.Id == id);
+            else if (id == null) next.Tasks.Add(result);
             else
             {
                 var current = next.Tasks.Find(t => t.Id == id);
-                current.Title = editor.Result.Title;
-                current.Notes = editor.Result.Notes;
-                current.SetSchedule(editor.Result.DueUtc, editor.Result.LeadMinutes);
-                current.SetCompletion(editor.Result.CompletedUtc);
+                current.Title = result.Title;
+                current.Notes = result.Notes;
+                current.SetSchedule(result.DueUtc, result.LeadMinutes);
+                current.SetCompletion(result.CompletedUtc);
             }
-            if (Commit(next))
-            {
-                Banner(editor.DeleteRequested ? "已删除事项。" : "事项已保存。");
-                RefreshDashboard();
-            }
+            if (!Commit(next, true)) return false;
+            Banner(result == null ? "已删除事项。" : "事项已保存。");
+            RefreshDashboard();
+            return true;
         }
     }
 }
