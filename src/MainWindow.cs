@@ -25,6 +25,7 @@ namespace WorkDesk
             this.state = state;
             Title = "工笺 · WorkDesk";
             FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI");
+            Foreground = (Brush)FindResource("Ink");
             Language = System.Windows.Markup.XmlLanguage.GetLanguage("zh-CN");
             UseLayoutRounding = true;
             Width = Math.Min(1100, SystemParameters.WorkArea.Width);
@@ -158,7 +159,7 @@ namespace WorkDesk
             var row = new DockPanel { LastChildFill = true };
             var check = new CheckBox {
                 IsChecked = item.CompletedUtc.HasValue, VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(1, 0, 11, 0)
+                Width = 23, MinHeight = 29, Margin = new Thickness(1, 0, 2, 0)
             };
             AutomationProperties.SetName(check, (item.CompletedUtc.HasValue ? "恢复待办：" : "标记完成：") + item.Title);
             check.Checked += delegate { ToggleCompletion(item.Id, true); };

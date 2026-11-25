@@ -153,6 +153,7 @@ namespace WorkDesk
         {
             Title = "工笺提醒";
             FontFamily = font;
+            Foreground = (Brush)FindResource("Ink");
             WindowStyle = WindowStyle.None;
             WindowStartupLocation = WindowStartupLocation.Manual;
             AllowsTransparency = true;

@@ -129,6 +129,7 @@ namespace WorkDesk
             Owner = owner;
             Title = item == null ? "新建事项" : "编辑事项";
             FontFamily = owner.FontFamily;
+            Foreground = owner.Foreground;
             Icon = owner.Icon;
             Background = Ui.Color("#F5F5FB");
             ResizeMode = ResizeMode.NoResize;
