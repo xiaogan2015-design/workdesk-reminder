@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
@@ -33,13 +34,13 @@ namespace WorkDesk
             return output.ToString();
         }
 
-        public static void WriteSummaries(StateStore store, string file, WorkSummary[] reports)
+        public static void WriteSummaries(StateStore store, string file, WorkSummary[] reports, bool zip = false)
         {
             if (reports.Length == 0) return;
             var output = new StringBuilder();
             if (reports.Length > 1) output.Append("# 工作总结\n\n");
             AppendSummaries(output, reports.OrderBy(s => s.Weekly).ThenBy(s => s.Period), reports.Length == 1 ? "#" : "##");
-            WriteWithImages(store, file, output.ToString(), ReportImages(reports));
+            WriteWithImages(store, file, output.ToString(), ReportImages(reports), zip);
         }
 
         public static IEnumerable<SummaryImage> ReportImages(IEnumerable<WorkSummary> reports)
@@ -69,27 +70,39 @@ namespace WorkDesk
 
         public static void Write(StateStore store, string file, string data)
         {
-            store.WriteExport(file, output => {
-                using (var writer = new StreamWriter(output, new UTF8Encoding(false), 1024, true)) writer.Write(data);
-            });
+            store.WriteExport(file, output => WriteText(output, data));
         }
 
-        public static string WithImages(string data, string file, IEnumerable<SummaryImage> images)
+        public static string WithImages(string data, IEnumerable<SummaryImage> images)
         {
             var ids = new HashSet<string>(images.Select(image => image.Id));
             if (ids.Count == 0) return data;
-            string folder = Uri.EscapeDataString(ImageFolder(file, ids));
+            return WithImageLinks(data, ids, ImageFolder(ids));
+        }
+
+        private static string WithImageLinks(string data, HashSet<string> ids, string folder)
+        {
             return SummaryImage.Reference.Replace(data, match => ids.Contains(match.Groups[1].Value)
-                ? "![截图](" + folder + "/" + match.Groups[1].Value + ".png)"
+                ? "![截图](./" + folder + "/" + match.Groups[1].Value + ".png)"
                 : match.Value);
         }
 
-        public static void WriteWithImages(StateStore store, string file, string data, IEnumerable<SummaryImage> images)
+        public static void WriteWithImages(StateStore store, string file, string data, IEnumerable<SummaryImage> images, bool zip = false)
         {
             var attachments = images.GroupBy(image => image.Id).Select(group => group.First()).ToArray();
+            var ids = new HashSet<string>(attachments.Select(image => image.Id));
+            string folderName = ImageFolder(ids);
+            if (ids.Count != 0) data = WithImageLinks(data, ids, folderName);
+            if (zip)
+            {
+                if (!String.Equals(Path.GetExtension(file), ".zip", StringComparison.OrdinalIgnoreCase))
+                    throw new IOException("请为压缩包使用 .zip 扩展名。");
+                WriteZip(store, file, data, folderName, attachments);
+                return;
+            }
             if (attachments.Length != 0)
             {
-                string folder = Path.Combine(Path.GetDirectoryName(file), ImageFolder(file, attachments.Select(image => image.Id)));
+                string folder = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(file)), folderName);
                 Directory.CreateDirectory(folder);
                 foreach (var image in attachments)
                 {
@@ -102,17 +115,37 @@ namespace WorkDesk
                     }
                     else store.WriteExport(path, output => output.Write(png, 0, png.Length));
                 }
-                data = WithImages(data, file, attachments);
             }
             Write(store, file, data);
         }
 
-        private static string ImageFolder(string file, IEnumerable<string> ids)
+        private static void WriteZip(StateStore store, string file, string data, string folder, SummaryImage[] images)
         {
-            // Use fresh folders for exports whose old copies may still contain transparent screenshots.
-            byte[] bytes = Encoding.ASCII.GetBytes("WorkDesk PNG\n" + String.Concat(ids.OrderBy(id => id, StringComparer.Ordinal)));
+            store.WriteExport(file, output => {
+                using (var archive = new ZipArchive(output, ZipArchiveMode.Create, true, Encoding.UTF8))
+                {
+                    using (var document = archive.CreateEntry(Path.GetFileNameWithoutExtension(file) + ".md").Open())
+                        WriteText(document, data);
+                    foreach (var image in images)
+                    {
+                        byte[] png = image.ReadPng();
+                        using (var entry = archive.CreateEntry(folder + "/" + image.Id + ".png", CompressionLevel.NoCompression).Open())
+                            entry.Write(png, 0, png.Length);
+                    }
+                }
+            });
+        }
+
+        private static void WriteText(Stream output, string data)
+        {
+            using (var writer = new StreamWriter(output, new UTF8Encoding(false), 1024, true)) writer.Write(data);
+        }
+
+        private static string ImageFolder(IEnumerable<string> ids)
+        {
+            byte[] bytes = Encoding.ASCII.GetBytes(String.Concat(ids.OrderBy(id => id, StringComparer.Ordinal)));
             using (var hash = SHA256.Create())
-                return Path.GetFileNameWithoutExtension(file) + "-图片-" + BitConverter.ToString(hash.ComputeHash(bytes), 0, 6).Replace("-", "").ToLowerInvariant();
+                return "workdesk-images-" + BitConverter.ToString(hash.ComputeHash(bytes), 0, 8).Replace("-", "").ToLowerInvariant();
         }
 
         private static void AppendPlan(StringBuilder output, WorkState state, DateTimeOffset now, string heading)

@@ -12,6 +12,7 @@ namespace WorkDesk
 {
     internal sealed partial class MainWindow
     {
+        private const string ReportFormats = "Markdown 文件 (*.md)|*.md|Markdown 和图片压缩包 (*.zip)|*.zip";
         private enum DeskPage { Desk, Summary, Settings }
         private static readonly string[] Weekdays = { "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六" };
         private DeskPage page;
@@ -25,14 +26,11 @@ namespace WorkDesk
         private Button fullScreenButton;
         private Button selectExportButton;
         private Grid summaryLayout;
-        private Border historyCard;
-        private ScrollViewer historyScroll;
         private bool summaryFullScreen;
         private WindowState windowedState;
         private WindowStyle windowedStyle;
         private ResizeMode windowedResizeMode;
         private GridLength sidebarWidth;
-        private double contentMaxWidth;
 
         private void InitializePages()
         {
@@ -53,8 +51,9 @@ namespace WorkDesk
             };
             var pageScroll = Element<ScrollViewer>("PageScroll");
             pageScroll.ScrollChanged += delegate(object sender, ScrollChangedEventArgs e) {
-                if (summaryFullScreen && ReferenceEquals(e.OriginalSource, pageScroll) && e.ViewportHeightChange != 0) SizeSummaryLayout();
+                if (page == DeskPage.Summary && ReferenceEquals(e.OriginalSource, pageScroll) && e.ViewportHeightChange != 0) SizeSummaryLayout();
             };
+            Element<DockPanel>("PageHeader").SizeChanged += delegate { if (page == DeskPage.Summary) SizeSummaryLayout(); };
         }
 
         private void RefreshSideCards(DateTime today)
@@ -121,19 +120,16 @@ namespace WorkDesk
         {
             if (summaryFullScreen == active || page != DeskPage.Summary) return;
             summaryFullScreen = active;
-            var content = Element<StackPanel>("PageContent");
             if (active)
             {
                 windowedState = WindowState;
                 windowedStyle = WindowStyle;
                 windowedResizeMode = ResizeMode;
                 sidebarWidth = shell.ColumnDefinitions[0].Width;
-                contentMaxWidth = content.MaxWidth;
                 WindowStyle = WindowStyle.None;
                 ResizeMode = ResizeMode.NoResize;
                 WindowState = WindowState.Maximized;
                 shell.ColumnDefinitions[0].Width = new GridLength(0);
-                content.MaxWidth = Double.PositiveInfinity;
             }
             else
             {
@@ -141,7 +137,6 @@ namespace WorkDesk
                 ResizeMode = windowedResizeMode;
                 WindowState = windowedState;
                 shell.ColumnDefinitions[0].Width = sidebarWidth;
-                content.MaxWidth = contentMaxWidth;
             }
             var visibility = active ? Visibility.Collapsed : Visibility.Visible;
             Element<Border>("Sidebar").Visibility = visibility;
@@ -153,13 +148,12 @@ namespace WorkDesk
         private void SizeSummaryLayout()
         {
             fullScreenButton.Content = summaryFullScreen ? "退出全屏" : "全屏";
-            summaryInput.MaxHeight = summaryFullScreen ? Double.PositiveInfinity : 410;
             summaryLayout.ColumnDefinitions[2].Width = summaryFullScreen ? new GridLength(295) : new GridLength(1, GridUnitType.Star);
-            historyCard.VerticalAlignment = summaryFullScreen ? VerticalAlignment.Stretch : VerticalAlignment.Top;
-            historyScroll.MaxHeight = summaryFullScreen ? Double.PositiveInfinity : 350;
             var margin = Element<StackPanel>("PageContent").Margin;
+            var header = Element<DockPanel>("PageHeader");
+            double headerHeight = summaryFullScreen ? 0 : header.ActualHeight + header.Margin.Top + header.Margin.Bottom;
             var viewport = Element<ScrollViewer>("PageScroll").ViewportHeight;
-            summaryLayout.Height = summaryFullScreen ? Math.Max(480, viewport - margin.Top - margin.Bottom) : Double.NaN;
+            summaryLayout.Height = Math.Max(535, viewport - margin.Top - margin.Bottom - headerHeight);
         }
 
         internal bool HasUnsavedSummary
@@ -180,7 +174,7 @@ namespace WorkDesk
             summaryLayout = new Grid();
             summaryLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2.15, GridUnitType.Star) });
             summaryLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(14) });
-            summaryLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 181 });
+            summaryLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 181, MaxWidth = 340 });
             var form = new DockPanel();
             var editorHeader = new StackPanel();
             var tabBar = new DockPanel { Margin = new Thickness(0, 0, 0, 15) };
@@ -237,7 +231,7 @@ namespace WorkDesk
                 var images = new List<SummaryImage>();
                 string text = summaryInput.ReadMarkdown(images);
                 if (String.IsNullOrWhiteSpace(text)) { Banner("请先填写总结正文或粘贴图片。"); return; }
-                CopyMarkdown(MarkdownExport.WithImages(MarkdownExport.Summary(summaryWeekly, summaryDate, text), SummaryFilename(), images),
+                CopyMarkdown(MarkdownExport.WithImages(MarkdownExport.Summary(summaryWeekly, summaryDate, text), images),
                     images.Count == 0 ? "已复制 Markdown。" : "已复制 Markdown。分享时请将导出的图片目录与正文放在一起。");
             });
             var export = Ui.Button("导出当前篇", delegate {
@@ -245,7 +239,7 @@ namespace WorkDesk
                 string text = summaryInput.ReadMarkdown(images);
                 if (String.IsNullOrWhiteSpace(text)) { Banner("请先填写总结正文或粘贴图片。"); return; }
                 string markdown = MarkdownExport.Summary(summaryWeekly, summaryDate, text);
-                ExportFile(SummaryFilename(), "Markdown 文件 (*.md)|*.md", dialog => MarkdownExport.WriteWithImages(store, dialog.FileName, markdown, images));
+                ExportFile(SummaryFilename(), ReportFormats, dialog => MarkdownExport.WriteWithImages(store, dialog.FileName, markdown, images, dialog.FilterIndex == 2));
             });
             export.ToolTip = "将当前编辑的日报或周报导出为 Markdown";
             foreach (var button in new[] { save, copy, export })
@@ -276,9 +270,8 @@ namespace WorkDesk
             DockPanel.SetDock(historyHeader, Dock.Top);
             history.Children.Add(historyHeader);
             historyRows = new StackPanel();
-            historyScroll = new ScrollViewer { Content = historyRows, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 9, 0, 0) };
-            history.Children.Add(historyScroll);
-            historyCard = Ui.Card(history);
+            history.Children.Add(new ScrollViewer { Content = historyRows, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 9, 0, 0) });
+            var historyCard = Ui.Card(history);
             Grid.SetColumn(historyCard, 2);
             summaryLayout.Children.Add(historyCard);
             RefreshHistory();
@@ -290,8 +283,8 @@ namespace WorkDesk
             var dialog = new SummaryExportDialog(this, state.Summaries);
             if (dialog.ShowDialog() != true) return;
             var reports = dialog.SelectedReports;
-            ExportFile("工作总结-" + WorkState.PeriodKey(DateTime.Today, false), "Markdown 文件 (*.md)|*.md",
-                file => MarkdownExport.WriteSummaries(store, file.FileName, reports));
+            ExportFile("工作总结-" + WorkState.PeriodKey(DateTime.Today, false), ReportFormats,
+                file => MarkdownExport.WriteSummaries(store, file.FileName, reports, file.FilterIndex == 2));
         }
 
         private string SummaryFilename() { return (summaryWeekly ? "周报-" : "日报-") + WorkState.PeriodKey(summaryDate, summaryWeekly); }
@@ -330,7 +323,7 @@ namespace WorkDesk
 
         private UIElement BuildSettingsPage()
         {
-            var panels = new StackPanel { MaxWidth = 760, HorizontalAlignment = HorizontalAlignment.Stretch };
+            var panels = new StackPanel { HorizontalAlignment = HorizontalAlignment.Stretch };
             var schedules = new StackPanel();
             schedules.Children.Add(Ui.Text("总结提醒", "SectionTitle"));
             var settings = state.Settings;
@@ -430,10 +423,10 @@ namespace WorkDesk
         private void ExportBackup()
         {
             ExportFile("工笺备份-" + WorkState.PeriodKey(DateTime.Today, false),
-                "完整数据备份 (*.json)|*.json|可阅读的 Markdown (*.md)|*.md", dialog => {
+                "完整数据备份 (*.json)|*.json|" + ReportFormats, dialog => {
                     if (dialog.FilterIndex == 1) store.BackUp(dialog.FileName, state);
                     else MarkdownExport.WriteWithImages(store, dialog.FileName, MarkdownExport.Archive(state, DateTimeOffset.Now),
-                        MarkdownExport.ReportImages(state.Summaries));
+                        MarkdownExport.ReportImages(state.Summaries), dialog.FilterIndex == 3);
                 });
         }
 
@@ -444,7 +437,9 @@ namespace WorkDesk
             {
                 if (dialog.ShowDialog(this) != true) return;
                 write(dialog);
-                Banner("文件已导出。\n" + dialog.FileName);
+                string message = System.IO.Path.GetExtension(dialog.FileName).Equals(".zip", StringComparison.OrdinalIgnoreCase)
+                    ? "压缩包已导出。解压后打开其中的 Markdown。" : "文件已导出。";
+                Banner(message + "\n" + dialog.FileName);
             }
             catch (Exception ex) { Banner("导出失败：" + ex.Message); }
         }

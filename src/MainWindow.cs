@@ -161,10 +161,13 @@ namespace WorkDesk
 
         private Border TaskRow(WorkItem item, DateTimeOffset now)
         {
+            StatusTone tone = item.CompletedUtc.HasValue ? StatusTone.Completed :
+                item.IsOverdue(now.UtcDateTime) ? StatusTone.Overdue :
+                item.WithinReminderWindow(now.UtcDateTime) ? StatusTone.Upcoming : StatusTone.Pending;
             var row = new DockPanel { LastChildFill = true };
             var check = new CheckBox {
                 IsChecked = item.CompletedUtc.HasValue, VerticalAlignment = VerticalAlignment.Center,
-                Width = 23, MinHeight = 29, Margin = new Thickness(1, 0, 2, 0)
+                Width = 23, MinHeight = 29, Margin = new Thickness(1, 0, 5, 0)
             };
             AutomationProperties.SetName(check, (item.CompletedUtc.HasValue ? "恢复待办：" : "标记完成：") + item.Title);
             check.Checked += delegate { ToggleCompletion(item.Id, true); };
@@ -182,13 +185,18 @@ namespace WorkDesk
             var title = Ui.Text(item.Title);
             title.TextWrapping = TextWrapping.Wrap;
             title.FontWeight = FontWeights.SemiBold;
+            title.FontSize = 15;
             details.Children.Add(title);
-            var meta = Ui.Text(TaskCaption(item, now), "Hint");
-            meta.Margin = new Thickness(0, 3, 0, 0);
-            if (item.IsOverdue(now.UtcDateTime)) meta.Foreground = Ui.Color("#A23B28");
-            else if (item.CompletedUtc.HasValue) meta.Foreground = Ui.Color("#13745A");
-            else if (item.WithinReminderWindow(now.UtcDateTime)) meta.Foreground = Ui.Color("#92501A");
-            details.Children.Add(meta);
+            var metadata = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+            var status = new TextBlock { Text = tone.Label, Foreground = tone.Text, FontSize = 12, FontWeight = FontWeights.SemiBold };
+            metadata.Children.Add(new Border {
+                Background = tone.Badge, CornerRadius = new CornerRadius(5), Padding = new Thickness(6, 2, 6, 2),
+                Margin = new Thickness(0, 0, 7, 0), Child = status
+            });
+            var timing = Ui.Text(TaskCaption(item), "Hint");
+            timing.VerticalAlignment = VerticalAlignment.Center;
+            metadata.Children.Add(timing);
+            details.Children.Add(metadata);
             if (!String.IsNullOrWhiteSpace(item.Notes))
             {
                 var notes = Ui.Text(item.Notes.Replace('\n', ' ').Replace('\r', ' '), "Hint");
@@ -199,21 +207,21 @@ namespace WorkDesk
                 details.Children.Add(notes);
             }
             row.Children.Add(details);
-            return new Border {
-                Child = row, Padding = new Thickness(0, 10, 0, 10), BorderThickness = new Thickness(0, 1, 0, 0),
-                BorderBrush = (Brush)FindResource("Line")
-            };
+            var card = tone.Card(new Thickness(12, 10, 10, 10));
+            card.Margin = new Thickness(0, 0, 0, 8);
+            card.Child = row;
+            AutomationProperties.SetItemStatus(card, tone.Label);
+            return card;
         }
 
-        private static string TaskCaption(WorkItem item, DateTimeOffset now)
+        private static string TaskCaption(WorkItem item)
         {
             var deadline = item.DueUtc.HasValue ? item.DueUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm", Chinese) : null;
             if (item.CompletedUtc.HasValue)
                 return "完成于 " + item.CompletedUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", Chinese) +
                     (deadline == null ? "" : "  ·  原定 " + deadline);
             if (deadline == null) return "无截止时间";
-            if (item.IsOverdue(now.UtcDateTime)) return "已逾期  ·  " + deadline;
-            return (item.WithinReminderWindow(now.UtcDateTime) ? "即将到期  ·  " : "截止  ·  ") + deadline;
+            return "截止 " + deadline;
         }
 
         private void ToggleCompletion(string id, bool completed)

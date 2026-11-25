@@ -29,7 +29,7 @@
     <Grid Grid.Column="1">
         <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <StackPanel x:Name="PageContent" MaxWidth="1230" Margin="28,23,28,22">
+            <StackPanel x:Name="PageContent" Margin="28,23,28,22">
                 <DockPanel x:Name="PageHeader" Margin="0,0,0,18">
                     <Border DockPanel.Dock="Right" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="1" Padding="11,6" CornerRadius="8" VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal">
@@ -62,7 +62,7 @@
                     </UniformGrid>
 
                     <Grid>
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="2.18*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*" MinWidth="197"/></Grid.ColumnDefinitions>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="2.18*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*" MinWidth="197" MaxWidth="360"/></Grid.ColumnDefinitions>
                         <Border x:Name="TaskCard" Style="{StaticResource Card}" Padding="17,16" MinHeight="221" VerticalAlignment="Top">
                             <StackPanel>
                                 <DockPanel Margin="0,0,0,12">

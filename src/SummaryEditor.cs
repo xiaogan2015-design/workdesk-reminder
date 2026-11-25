@@ -21,7 +21,6 @@ namespace WorkDesk
         {
             this.feedback = feedback;
             MinHeight = 250;
-            MaxHeight = 410;
             AcceptsReturn = true;
             AllowDrop = false;
             IsDocumentEnabled = true;

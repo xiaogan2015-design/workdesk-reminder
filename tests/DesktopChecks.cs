@@ -71,6 +71,8 @@ namespace WorkDesk
             });
             Check(window.State.Tasks.Single().Title == "核对计划" && !window.State.Tasks[0].DueUtc.HasValue, "Save creates an unscheduled item.");
             Check(window.Element<TextBlock>("PendingCount").Text == "1" && rows.Children.Count == 1, "Saving refreshes the dashboard.");
+            Check(((Border)rows.Children[0]).Margin.Bottom > 0 && AutomationProperties.GetItemStatus(rows.Children[0]) == "待处理",
+                "Pending items appear in separate cards with a textual status.");
             Check(store.Load().Tasks.Single().Notes == "两条说明\n续行", "The notes are persisted.");
 
             var filters = window.Element<WrapPanel>("Filters");
@@ -84,6 +86,9 @@ namespace WorkDesk
             Check(window.Element<TextBlock>("PendingCount").Text == "0" && window.Element<TextBlock>("CompletedCount").Text == "1",
                 "Completing an item updates both counts.");
             Click((Button)filters.Children[3]);
+            Check(AutomationProperties.GetItemStatus(rows.Children[0]) == "已完成" &&
+                Descendants<TextBlock>(rows).Any(block => block.Text == "已完成" && block.Foreground == StatusTone.Completed.Text),
+                "Completed cards visibly use the green state label.");
             var prior = DateTime.Today.AddDays(-1);
             WithEditor(Descendants<Button>(rows).Single(), editor => {
                 Find<DatePicker>(editor, "完成日期").SelectedDate = prior;
@@ -127,6 +132,11 @@ namespace WorkDesk
                 app.Dispatcher.Invoke(DispatcherPriority.SystemIdle, new Action(delegate { }));
                 var popup = app.Windows.OfType<ReminderPopup>().Single();
                 Check(popup.IsVisible && popup.ShowActivated == false && popup.Topmost, "Reminders open a visible non-activating popup while the main window is hidden.");
+                var labels = Descendants<TextBlock>(popup).ToArray();
+                Check(labels.Any(label => label.Text == "事项已逾期" && label.Foreground == StatusTone.Overdue.Text) &&
+                    labels.Any(label => label.Text == "日报提醒" && label.Foreground == StatusTone.Pending.Text) &&
+                    labels.Any(label => label.Text == "周报提醒" && label.Foreground == StatusTone.Weekly.Text),
+                    "Overdue, daily, and weekly reminders display different labeled tones.");
                 var displayed = store.Load();
                 Check(displayed.Tasks[0].ReminderShown && displayed.LastDailyReminder != null && displayed.LastWeeklyReminder != null,
                     "The independent reminder markers are saved before the popup.");
@@ -139,6 +149,7 @@ namespace WorkDesk
                 window.UpdateLayout();
                 var daily = Find<SummaryEditor>(window, "总结正文");
                 daily.Focus();
+                CheckSummaryResize(window, daily);
                 var plain = "    已完成核对\n\n- 待同步";
                 SetBody(daily, plain);
                 Check(daily.ReadMarkdown() == plain, "The inline editor preserves Markdown indentation and paragraphs.");
@@ -220,6 +231,32 @@ namespace WorkDesk
                 Check(!app.Windows.OfType<ReminderPopup>().Any(), "The same task and summary reminders are not duplicated.");
             }
             window.Close();
+        }
+
+        private static void CheckSummaryResize(MainWindow window, SummaryEditor editor)
+        {
+            var initialSize = new Size(window.Width, window.Height);
+            window.Width = 880;
+            window.Height = 595;
+            window.UpdateLayout();
+            double narrowWidth = editor.ActualWidth;
+            double shortHeight = editor.ActualHeight;
+            window.Width = 1350;
+            window.Height = 860;
+            window.Dispatcher.Invoke(DispatcherPriority.Background, new Action(delegate { }));
+            window.UpdateLayout();
+            Check(editor.ActualWidth > narrowWidth + 200 && editor.ActualHeight > shortHeight + 100,
+                "Dragging a window larger expands the same report editor in both directions.");
+            window.Width = initialSize.Width;
+            window.Height = initialSize.Height;
+            window.UpdateLayout();
+            double normalHeight = editor.ActualHeight;
+            window.WindowState = WindowState.Maximized;
+            window.Dispatcher.Invoke(DispatcherPriority.Background, new Action(delegate { }));
+            window.UpdateLayout();
+            Check(editor.ActualHeight > normalHeight && window.WindowStyle != WindowStyle.None &&
+                window.Element<Border>("Sidebar").IsVisible, "Native maximizing also grows the editor and leaves the normal navigation accessible.");
+            window.WindowState = WindowState.Normal;
         }
 
         private static void CheckExportDialog(MainWindow window, IEnumerable<WorkSummary> reports)

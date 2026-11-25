@@ -272,11 +272,16 @@ namespace WorkDesk
 
             if (batch.Tasks.Length > 0)
             {
+                var now = DateTime.UtcNow;
+                int overdue = 0;
+                foreach (var item in batch.Tasks) if (item.IsOverdue(now)) overdue++;
+                string title = overdue == 0 ? "事项即将到期" : overdue == batch.Tasks.Length ? "事项已逾期" : "事项截止提醒";
                 string text = batch.Tasks.Length == 1 ? batch.Tasks[0].Title : batch.Tasks[0].Title + " 等 " + batch.Tasks.Length + " 项";
-                AddNotice(contents, "事项截止提醒", text, "打开事项", delegate { return open(null); });
+                AddNotice(contents, overdue == 0 ? StatusTone.Upcoming : StatusTone.Overdue,
+                    title, text, "打开事项", delegate { return open(null); });
             }
-            if (batch.Daily) AddNotice(contents, "日报提醒", "该写今天的工作总结了。", "写日报", delegate { return open(false); });
-            if (batch.Weekly) AddNotice(contents, "周报提醒", "该写本周的工作总结了。", "写周报", delegate { return open(true); });
+            if (batch.Daily) AddNotice(contents, StatusTone.Pending, "日报提醒", "该写今天的工作总结了。", "写日报", delegate { return open(false); });
+            if (batch.Weekly) AddNotice(contents, StatusTone.Weekly, StatusTone.Weekly.Label, "该写本周的工作总结了。", "写周报", delegate { return open(true); });
 
             var card = Ui.Card(contents);
             card.BorderBrush = Ui.Color("#C1B0F5");
@@ -299,20 +304,26 @@ namespace WorkDesk
             Top = Math.Max(work.Top, work.Bottom - ActualHeight - 16);
         }
 
-        private void AddNotice(StackPanel contents, string title, string text, string action, Func<bool> open)
+        private void AddNotice(StackPanel contents, StatusTone tone, string title, string text, string action, Func<bool> open)
         {
-            var row = new DockPanel { Margin = new Thickness(0, 12, 0, 0) };
+            var card = tone.Card(new Thickness(10, 8, 8, 8));
+            card.Margin = new Thickness(0, 8, 0, 0);
+            var row = new DockPanel();
             var button = Ui.Button(action, delegate {
                 if (!open()) return;
-                contents.Children.Remove(row);
+                contents.Children.Remove(card);
                 if (contents.Children.Count == 1) Close();
             }, "Quiet");
+            button.Background = tone.Badge;
+            button.Foreground = tone.Text;
+            button.Padding = new Thickness(9, 6, 9, 6);
             button.VerticalAlignment = VerticalAlignment.Center;
             button.Margin = new Thickness(8, 0, 0, 0);
             DockPanel.SetDock(button, Dock.Right);
             row.Children.Add(button);
             var message = new StackPanel();
             var label = Ui.Text(title);
+            label.Foreground = tone.Text;
             label.FontWeight = FontWeights.SemiBold;
             message.Children.Add(label);
             var detail = Ui.Text(text.Replace('\r', ' ').Replace('\n', ' '), "Hint");
@@ -321,7 +332,8 @@ namespace WorkDesk
             detail.ToolTip = text;
             message.Children.Add(detail);
             row.Children.Add(message);
-            contents.Children.Add(row);
+            card.Child = row;
+            contents.Children.Add(card);
         }
     }
 }
