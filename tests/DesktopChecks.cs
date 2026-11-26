@@ -368,7 +368,7 @@ namespace WorkDesk
                 try
                 {
                     var boxes = Descendants<CheckBox>(dialog).ToArray();
-                    var export = Descendants<Button>(dialog).Single(button => button.Content as string == "导出 Markdown");
+                    var export = Descendants<Button>(dialog).Single(button => button.Content as string == "导出所选总结");
                     Check(boxes.Length == 3 && !export.IsEnabled, "Export opens with all saved reports across both types unselected.");
                     Click(Descendants<Button>(dialog).Single(button => button.Content as string == "全选"));
                     Check(boxes.All(box => box.IsChecked == true) && export.IsEnabled, "All saved reports can be selected.");

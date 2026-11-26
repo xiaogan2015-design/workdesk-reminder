@@ -48,7 +48,7 @@ namespace WorkDesk
             panel.Children.Add(header);
 
             var footer = new DockPanel { LastChildFill = false, Margin = new Thickness(0, 10, 0, 0) };
-            export = Ui.Button("导出 Markdown", delegate {
+            export = Ui.Button("导出所选总结", delegate {
                 SelectedReports = choices.Where(choice => choice.IsChecked == true).Select(choice => (WorkSummary)choice.Tag).ToArray();
                 if (SelectedReports.Length > 0) DialogResult = true;
             }, "Primary");

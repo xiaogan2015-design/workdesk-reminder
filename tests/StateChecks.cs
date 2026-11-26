@@ -94,15 +94,13 @@ internal static class StateChecks
         string markdownFile = Path.Combine(folder, "archive.md");
         string picturesFile = Path.Combine(folder, "汇总 示例.md");
         string selectedFile = Path.Combine(folder, "selected.md");
+        string allFile = Path.Combine(folder, "all.md");
+        string htmlFile = Path.Combine(folder, "带图 总结.html");
         string selectedZip = Path.Combine(folder, "带图 总结.zip");
         var image = new SummaryImage {
             Id = Guid.NewGuid().ToString("N"),
             Png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9a8AAAAASUVORK5CYII="
         };
-        string picturesDirectory = null;
-        string pngFile = null;
-        string selectedDirectory = null;
-        string selectedPng = null;
         try
         {
             Check(store.Load().Tasks.Count == 0, "Fresh installation");
@@ -137,11 +135,11 @@ internal static class StateChecks
             Check(imageBackup.Images.Single().Png == image.Png && imageBackup.Text == image.Marker, "JSON backups preserve image-only reports and their bytes");
             string illustrated = MarkdownExport.Archive(state, now);
             MarkdownExport.WriteWithImages(store, picturesFile, illustrated, imageBackup.Images);
-            picturesDirectory = Directory.GetDirectories(folder, "workdesk-images-*").Single();
-            pngFile = Path.Combine(picturesDirectory, image.Id + ".png");
-            string link = "./" + Path.GetFileName(picturesDirectory) + "/" + image.Id + ".png";
-            Check(File.ReadAllText(picturesFile).Contains(link) && MarkdownExport.WithImages(illustrated, imageBackup.Images).Contains(link) &&
-                File.ReadAllBytes(pngFile).SequenceEqual(image.ReadPng()), "Markdown and copied text use the same ASCII relative image link in a Chinese path");
+            string link = "![截图](data:image/png;base64," + image.Png + ")";
+            string copied = MarkdownExport.WithEmbeddedImages(illustrated, imageBackup.Images);
+            Check(copied.Contains(link) && File.ReadAllText(picturesFile) == copied &&
+                Directory.GetDirectories(folder, "workdesk-images-*").Length == 0,
+                "Both Markdown export and copied Markdown include the PNG without a folder or local file link.");
             MarkdownExport.WriteWithImages(store, picturesFile, illustrated, imageBackup.Images);
             Check(File.ReadAllText(picturesFile).Contains(link), "Re-exporting Markdown safely reuses the same image");
             var oldPixels = new byte[] { 12, 56, 209, 0, 211, 100, 7, 0 };
@@ -150,7 +148,7 @@ internal static class StateChecks
             var legacyDay = today.AddDays(-1);
             state.SetSummary(legacyDay, false, "需要恢复的截图\n" + oldImage.Marker, now.UtcDateTime,
                 new System.Collections.Generic.List<SummaryImage> { oldImage });
-            state.SetSummary(today.AddDays(-2), false, "没有勾选的总结", now.UtcDateTime);
+            state.SetSummary(today.AddDays(-2), false, "没有勾选的总结\n<script>alert(1)</script>", now.UtcDateTime);
             store.Save(state);
             var restored = store.Load();
             var recoveredImage = restored.FindSummary(legacyDay, false).Images.Single();
@@ -162,22 +160,30 @@ internal static class StateChecks
                 "Intentional transparency remains unchanged.");
             var selection = new[] { restored.FindSummary(legacyDay, false), restored.FindSummary(today, true) };
             MarkdownExport.WriteSummaries(store, selectedFile, selection);
-            selectedDirectory = Directory.GetDirectories(folder, "workdesk-images-*")
-                .Single(path => File.Exists(Path.Combine(path, oldImage.Id + ".png")));
-            selectedPng = Path.Combine(selectedDirectory, oldImage.Id + ".png");
             string selectedText = File.ReadAllText(selectedFile);
             Check(selectedText.Contains("# 工作总结") && selectedText.Contains("## 日报 · 2026-11-26") &&
-                selectedText.Contains("## 周报 · 2026-11-23") && !selectedText.Contains("2026-11-25") && !selectedText.Contains(image.Id),
+                selectedText.Contains("## 周报 · 2026-11-23") && !selectedText.Contains("2026-11-25") && !selectedText.Contains(image.Png),
                 "Selected export merges only checked reports.");
-            Check(File.ReadAllBytes(selectedPng).SequenceEqual(recoveredImage.ReadPng()) && Directory.GetFiles(selectedDirectory).Length == 1,
-                "Selected export includes only the selected image, with repaired opacity.");
-            MarkdownExport.WriteSummaries(store, selectedZip, selection, true);
+            Check(selectedText.Contains("data:image/png;base64," + recoveredImage.Png) && !selectedText.Contains("workdesk-image:"),
+                "Selected export directly embeds only the chosen image, with repaired opacity.");
+            MarkdownExport.WriteSummaries(store, allFile, restored.Summaries.ToArray());
+            string allText = File.ReadAllText(allFile);
+            Check(allText.Contains(link) && allText.Contains(recoveredImage.Png) && !allText.Contains("workdesk-image:"),
+                "Selecting all saved reports embeds pictures from multiple reports.");
+            MarkdownExport.WriteSummaries(store, htmlFile, restored.Summaries.ToArray());
+            string html = File.ReadAllText(htmlFile);
+            Check(html.Contains("&lt;script&gt;alert(1)&lt;/script&gt;") && !html.Contains("<script>") &&
+                html.Contains("<img alt=\"截图\" src=\"data:image/png;base64," + image.Png + "\">") &&
+                html.Contains("<img alt=\"截图\" src=\"data:image/png;base64," + recoveredImage.Png + "\">"),
+                "The browser export embeds both images and treats authored text as text.");
+            MarkdownExport.WriteSummaries(store, selectedZip, selection);
             using (var stream = File.OpenRead(selectedZip))
             using (var archiveFile = new ZipArchive(stream, ZipArchiveMode.Read))
             {
-                var zippedPng = archiveFile.GetEntry(Path.GetFileName(selectedDirectory) + "/" + oldImage.Id + ".png");
+                var zippedPng = archiveFile.Entries.Single(entry => entry.FullName.EndsWith("/" + oldImage.Id + ".png", StringComparison.Ordinal));
                 using (var body = new StreamReader(archiveFile.GetEntry("带图 总结.md").Open()))
-                    Check(body.ReadToEnd() == selectedText && archiveFile.Entries.Count == 2, "ZIP includes only the selected Markdown and its relative image");
+                    Check(body.ReadToEnd() == selectedText.Replace("data:image/png;base64," + recoveredImage.Png, "./" + zippedPng.FullName) &&
+                        archiveFile.Entries.Count == 2, "ZIP includes only the selected Markdown and its relative image");
                 using (var embedded = zippedPng.Open())
                 using (var png = new MemoryStream())
                 {
@@ -196,11 +202,9 @@ internal static class StateChecks
             File.Delete(markdownFile);
             File.Delete(picturesFile);
             File.Delete(selectedFile);
+            File.Delete(allFile);
+            File.Delete(htmlFile);
             File.Delete(selectedZip);
-            if (pngFile != null) File.Delete(pngFile);
-            if (selectedPng != null) File.Delete(selectedPng);
-            if (Directory.Exists(picturesDirectory)) Directory.Delete(picturesDirectory);
-            if (Directory.Exists(selectedDirectory)) Directory.Delete(selectedDirectory);
             File.Delete(backup.FilePath);
             if (Directory.Exists(Path.GetDirectoryName(backup.FilePath))) Directory.Delete(Path.GetDirectoryName(backup.FilePath));
             if (Directory.Exists(folder)) Directory.Delete(folder);

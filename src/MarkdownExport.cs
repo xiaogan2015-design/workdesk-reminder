@@ -4,8 +4,10 @@ using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace WorkDesk
 {
@@ -34,13 +36,13 @@ namespace WorkDesk
             return output.ToString();
         }
 
-        public static void WriteSummaries(StateStore store, string file, WorkSummary[] reports, bool zip = false)
+        public static void WriteSummaries(StateStore store, string file, WorkSummary[] reports)
         {
             if (reports.Length == 0) return;
             var output = new StringBuilder();
             if (reports.Length > 1) output.Append("# 工作总结\n\n");
             AppendSummaries(output, reports.OrderBy(s => s.Weekly).ThenBy(s => s.Period), reports.Length == 1 ? "#" : "##");
-            WriteWithImages(store, file, output.ToString(), ReportImages(reports), zip);
+            WriteWithImages(store, file, output.ToString(), ReportImages(reports));
         }
 
         public static IEnumerable<SummaryImage> ReportImages(IEnumerable<WorkSummary> reports)
@@ -73,65 +75,88 @@ namespace WorkDesk
             store.WriteExport(file, output => WriteText(output, data));
         }
 
-        public static string WithImages(string data, IEnumerable<SummaryImage> images)
+        public static string WithEmbeddedImages(string data, IEnumerable<SummaryImage> images)
         {
-            var ids = new HashSet<string>(images.Select(image => image.Id));
-            if (ids.Count == 0) return data;
-            return WithImageLinks(data, ids, ImageFolder(ids));
+            return WithImageLinks(data, IndexImages(images), DataUrl);
         }
 
-        private static string WithImageLinks(string data, HashSet<string> ids, string folder)
+        private static Dictionary<string, SummaryImage> IndexImages(IEnumerable<SummaryImage> images)
         {
-            return SummaryImage.Reference.Replace(data, match => ids.Contains(match.Groups[1].Value)
-                ? "![截图](./" + folder + "/" + match.Groups[1].Value + ".png)"
-                : match.Value);
+            return images.GroupBy(image => image.Id).ToDictionary(group => group.Key, group => group.First());
         }
 
-        public static void WriteWithImages(StateStore store, string file, string data, IEnumerable<SummaryImage> images, bool zip = false)
+        private static string DataUrl(SummaryImage image)
         {
-            var attachments = images.GroupBy(image => image.Id).Select(group => group.First()).ToArray();
-            var ids = new HashSet<string>(attachments.Select(image => image.Id));
-            string folderName = ImageFolder(ids);
-            if (ids.Count != 0) data = WithImageLinks(data, ids, folderName);
-            if (zip)
+            return "data:image/png;base64," + image.Png.Replace(" ", "").Replace("\r", "").Replace("\n", "").Replace("\t", "");
+        }
+
+        private static string WithImageLinks(string data, Dictionary<string, SummaryImage> images, Func<SummaryImage, string> address)
+        {
+            if (images.Count == 0) return data;
+            return SummaryImage.Reference.Replace(data, match => {
+                SummaryImage image;
+                return images.TryGetValue(match.Groups[1].Value, out image) ? "![截图](" + address(image) + ")" : match.Value;
+            });
+        }
+
+        public static void WriteWithImages(StateStore store, string file, string data, IEnumerable<SummaryImage> images)
+        {
+            var attachments = IndexImages(images);
+            switch (Path.GetExtension(file).ToLowerInvariant())
             {
-                if (!String.Equals(Path.GetExtension(file), ".zip", StringComparison.OrdinalIgnoreCase))
-                    throw new IOException("请为压缩包使用 .zip 扩展名。");
-                WriteZip(store, file, data, folderName, attachments);
-                return;
+                case ".md":
+                    Write(store, file, WithImageLinks(data, attachments, DataUrl));
+                    break;
+                case ".html":
+                    WriteHtml(store, file, data, attachments);
+                    break;
+                case ".zip":
+                    WriteZip(store, file, data, attachments);
+                    break;
+                default:
+                    throw new IOException("请使用 .md、.html 或 .zip 扩展名。");
             }
-            if (attachments.Length != 0)
-            {
-                string folder = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(file)), folderName);
-                Directory.CreateDirectory(folder);
-                foreach (var image in attachments)
-                {
-                    string path = Path.Combine(folder, image.Id + ".png");
-                    byte[] png = image.ReadPng();
-                    if (File.Exists(path))
-                    {
-                        if (!File.ReadAllBytes(path).SequenceEqual(png))
-                            throw new IOException("图片目录中有同名文件，请换一个导出文件名。");
-                    }
-                    else store.WriteExport(path, output => output.Write(png, 0, png.Length));
-                }
-            }
-            Write(store, file, data);
         }
 
-        private static void WriteZip(StateStore store, string file, string data, string folder, SummaryImage[] images)
+        private static void WriteZip(StateStore store, string file, string data, Dictionary<string, SummaryImage> images)
         {
+            string folder = ImageFolder(images.Keys);
+            string markdown = WithImageLinks(data, images, image => "./" + folder + "/" + image.Id + ".png");
             store.WriteExport(file, output => {
                 using (var archive = new ZipArchive(output, ZipArchiveMode.Create, true, Encoding.UTF8))
                 {
                     using (var document = archive.CreateEntry(Path.GetFileNameWithoutExtension(file) + ".md").Open())
-                        WriteText(document, data);
-                    foreach (var image in images)
+                        WriteText(document, markdown);
+                    foreach (var image in images.Values)
                     {
                         byte[] png = image.ReadPng();
                         using (var entry = archive.CreateEntry(folder + "/" + image.Id + ".png", CompressionLevel.NoCompression).Open())
                             entry.Write(png, 0, png.Length);
                     }
+                }
+            });
+        }
+
+        private static void WriteHtml(StateStore store, string file, string data, Dictionary<string, SummaryImage> images)
+        {
+            store.WriteExport(file, output => {
+                using (var writer = new StreamWriter(output, new UTF8Encoding(false), 1024, true))
+                {
+                    writer.Write("<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+                    writer.Write("<title>工笺 · 工作记录</title><style>body{background:#f5f5fb;color:#211a37;font:16px/1.65 'Segoe UI','Microsoft YaHei UI',sans-serif;margin:0;padding:24px}main{max-width:900px;margin:auto;background:white;border:1px solid #e8e4f1;border-radius:14px;padding:clamp(16px,4vw,32px);white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%;height:auto;display:block;margin:.65em 0;border-radius:8px}</style></head><body><main>");
+                    int start = 0;
+                    foreach (Match match in SummaryImage.Reference.Matches(data))
+                    {
+                        SummaryImage image;
+                        if (!images.TryGetValue(match.Groups[1].Value, out image)) continue;
+                        writer.Write(WebUtility.HtmlEncode(data.Substring(start, match.Index - start)));
+                        writer.Write("<img alt=\"截图\" src=\"");
+                        writer.Write(DataUrl(image));
+                        writer.Write("\">");
+                        start = match.Index + match.Length;
+                    }
+                    writer.Write(WebUtility.HtmlEncode(data.Substring(start)));
+                    writer.Write("</main></body></html>");
                 }
             });
         }

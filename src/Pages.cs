@@ -13,7 +13,7 @@ namespace WorkDesk
 {
     internal sealed partial class MainWindow
     {
-        private const string ReportFormats = "Markdown 文件 (*.md)|*.md|Markdown 和图片压缩包 (*.zip)|*.zip";
+        private const string ReportFormats = "Markdown（内嵌图片） (*.md)|*.md|网页（内嵌图片） (*.html)|*.html|Markdown 和图片压缩包 (*.zip)|*.zip";
         private const string DefaultFontChoice = "系统默认字体";
         private enum DeskPage { Desk, Summary, Settings }
         private static readonly string[] Weekdays = { "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六" };
@@ -258,17 +258,17 @@ namespace WorkDesk
                 var images = new List<SummaryImage>();
                 string text = summaryInput.ReadMarkdown(images);
                 if (String.IsNullOrWhiteSpace(text)) { Banner("请先填写总结正文或粘贴图片。"); return; }
-                CopyMarkdown(MarkdownExport.WithImages(MarkdownExport.Summary(summaryWeekly, summaryDate, text), images),
-                    images.Count == 0 ? "已复制 Markdown。" : "已复制 Markdown。分享时请将导出的图片目录与正文放在一起。");
+                CopyMarkdown(MarkdownExport.WithEmbeddedImages(MarkdownExport.Summary(summaryWeekly, summaryDate, text), images),
+                    images.Count == 0 ? "已复制 Markdown。" : "已复制带图 Markdown。请在支持内嵌图片的工具中预览。");
             });
             var export = Ui.Button("导出当前篇", delegate {
                 var images = new List<SummaryImage>();
                 string text = summaryInput.ReadMarkdown(images);
                 if (String.IsNullOrWhiteSpace(text)) { Banner("请先填写总结正文或粘贴图片。"); return; }
                 string markdown = MarkdownExport.Summary(summaryWeekly, summaryDate, text);
-                ExportFile(SummaryFilename(), ReportFormats, dialog => MarkdownExport.WriteWithImages(store, dialog.FileName, markdown, images, dialog.FilterIndex == 2));
+                ExportFile(SummaryFilename(), ReportFormats, dialog => MarkdownExport.WriteWithImages(store, dialog.FileName, markdown, images));
             });
-            export.ToolTip = "将当前编辑的日报或周报导出为 Markdown";
+            export.ToolTip = "将当前编辑的日报或周报导出为 Markdown、网页或压缩包";
             foreach (var button in new[] { save, copy, export })
             {
                 button.Margin = new Thickness(0, 0, 6, 5);
@@ -311,7 +311,7 @@ namespace WorkDesk
             if (dialog.ShowDialog() != true) return;
             var reports = dialog.SelectedReports;
             ExportFile("工作总结-" + WorkState.PeriodKey(DateTime.Today, false), ReportFormats,
-                file => MarkdownExport.WriteSummaries(store, file.FileName, reports, file.FilterIndex == 2));
+                file => MarkdownExport.WriteSummaries(store, file.FileName, reports));
         }
 
         private string SummaryFilename() { return (summaryWeekly ? "周报-" : "日报-") + WorkState.PeriodKey(summaryDate, summaryWeekly); }
@@ -510,9 +510,9 @@ namespace WorkDesk
         {
             ExportFile("工笺备份-" + WorkState.PeriodKey(DateTime.Today, false),
                 "完整数据备份 (*.json)|*.json|" + ReportFormats, dialog => {
-                    if (dialog.FilterIndex == 1) store.BackUp(dialog.FileName, state);
+                    if (System.IO.Path.GetExtension(dialog.FileName).Equals(".json", StringComparison.OrdinalIgnoreCase)) store.BackUp(dialog.FileName, state);
                     else MarkdownExport.WriteWithImages(store, dialog.FileName, MarkdownExport.Archive(state, DateTimeOffset.Now),
-                        MarkdownExport.ReportImages(state.Summaries), dialog.FilterIndex == 3);
+                        MarkdownExport.ReportImages(state.Summaries));
                 });
         }
 
@@ -523,8 +523,9 @@ namespace WorkDesk
             {
                 if (dialog.ShowDialog(this) != true) return;
                 write(dialog);
-                string message = System.IO.Path.GetExtension(dialog.FileName).Equals(".zip", StringComparison.OrdinalIgnoreCase)
-                    ? "压缩包已导出。解压后打开其中的 Markdown。" : "文件已导出。";
+                string extension = System.IO.Path.GetExtension(dialog.FileName).ToLowerInvariant();
+                string message = extension == ".zip" ? "压缩包已导出。解压后打开其中的 Markdown。" :
+                    extension == ".html" ? "网页已导出。可以用浏览器打开。" : "文件已导出。";
                 Banner(message + "\n" + dialog.FileName);
             }
             catch (Exception ex) { Banner("导出失败：" + ex.Message); }
