@@ -4,13 +4,13 @@
 
 ## 下载
 
-[下载待办笔记 v1.5.1](./release/WorkDesk-v1.5.1.exe?raw=true)
+[下载待办笔记 v1.5.3](./release/WorkDesk-v1.5.3.exe?raw=true)
 
 下载后双击 EXE，即可在装有 .NET Framework 4.8 或 4.8.1 的 Windows 10／11 上运行。更新前请先从托盘退出旧版，再打开新版。
 
-SHA-256：`e14d2a45567393ad6c9ab346b2d8f5aa77b594bfbf1b6105b159d32e9fe763df`
+SHA-256：`9ec30eb290fbc51718c80e64e5ab67add23f78103542efcf11df4269f3db0c33`
 
-[查看 v1.5.1 的改动与升级说明](./CHANGELOG.md#v151)
+[查看 v1.5.3 的改动与升级说明](./CHANGELOG.md#v153)
 
 ## 界面预览
 

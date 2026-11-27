@@ -5,9 +5,8 @@
         <DockPanel LastChildFill="False">
             <StackPanel DockPanel.Dock="Top">
                 <StackPanel Orientation="Horizontal" Margin="6,0,0,33">
-                    <Border Width="40" Height="40" CornerRadius="11" Background="#7854EE">
-                        <TextBlock Text="&#xE73A;" FontFamily="Segoe MDL2 Assets" FontSize="21" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" />
-                    </Border>
+                    <Image x:Name="BrandIcon" Width="40" Height="40" RenderOptions.BitmapScalingMode="HighQuality"
+                           Source="{Binding Icon, RelativeSource={RelativeSource AncestorType={x:Type Window}}}" />
                     <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="待办笔记" FontWeight="Bold" FontSize="{DynamicResource SectionSize}" Foreground="White" />
                         <TextBlock Text="WORKDESK" FontSize="9" FontWeight="SemiBold" Foreground="#C1B3E4" />

@@ -9,8 +9,8 @@ using System.Windows.Markup;
 [assembly: AssemblyProduct("待办笔记")]
 [assembly: AssemblyDescription("Windows 工作待办与总结")]
 [assembly: System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.8", FrameworkDisplayName = ".NET Framework 4.8")]
-[assembly: AssemblyVersion("1.5.1.0")]
-[assembly: AssemblyFileVersion("1.5.1.0")]
+[assembly: AssemblyVersion("1.5.3.0")]
+[assembly: AssemblyFileVersion("1.5.3.0")]
 
 namespace WorkDesk
 {

@@ -220,6 +220,8 @@ namespace WorkDesk
             using (var host = new DesktopHost(app, window))
             {
                 window.Show();
+                Check(window.Icon != null && ReferenceEquals(window.Element<Image>("BrandIcon").Source, window.Icon),
+                    "The sidebar uses the packaged window icon.");
                 host.Start();
                 window.Close();
                 Check(!window.IsVisible && app.Windows.OfType<MainWindow>().Contains(window), "Closing leaves the window running in the tray.");
