@@ -1,8 +1,8 @@
-# 工笺（WorkDesk）开发记忆
+# 待办笔记（WorkDesk）开发记忆
 
 ## 项目定位与开发入口
 
-工笺是 Windows 本地应用，用于管理待办及截止提醒、记录日报和周报、导出工作内容。应用使用 .NET Framework 4.8 和 WPF，托盘使用 WinForms。可在 [README](./README.md) 查看当前用法和发布版本，在 [需求](./docs/requirements.md) 和 [架构设计](./docs/design.md) 查看初版方案。维护后续功能时以当前源码和测试为准。
+待办笔记是 Windows 本地应用，用于管理待办及截止提醒、记录日报和周报、导出工作内容。应用使用 .NET Framework 4.8 和 WPF，托盘使用 WinForms。可在 [README](./README.md) 查看当前用法和发布版本，在 [需求](./docs/requirements.md) 和 [架构设计](./docs/design.md) 查看初版方案。维护后续功能时以当前源码和测试为准。
 
 - [build.ps1](./build.ps1) 直接调用 Windows 自带的 `csc.exe` 编译 `src/*.cs`。保持 C# 5 兼容，新增源码使用 UTF-8，沿用现有依赖。
 - [Program.cs](./src/Program.cs) 是启动入口，负责加载 XAML、单实例和 `--tray` 启动。[DesktopHost.cs](./src/DesktopHost.cs) 负责托盘、自动启动、提醒调度和弹窗。
@@ -18,7 +18,7 @@
 
 ## 托盘、提醒与事项列表
 
-- 关闭主窗口会隐藏到托盘，计时器继续运行。由托盘「退出工笺」结束进程，退出前要处理未保存的总结。各版本共用单实例标识，验证新版 EXE 前先退出旧版，避免启动操作只唤醒旧窗口。开机启动项记录 EXE 路径，移动 EXE 后检查注册是否指向正确位置。
+- 关闭主窗口会隐藏到托盘，计时器继续运行。由托盘「退出待办笔记」结束进程，退出前要处理未保存的总结。改显示名称时沿用 `WorkDesk` 的数据路径、单实例标识和启动项名称，避免升级后出现两份数据或重复启动项。开机启动项记录 EXE 路径，移动 EXE 后检查注册是否指向正确位置。
 - `DesktopHost.Tick` 先计算本轮提醒，提交已提醒标记，再显示弹窗。保存失败留到下一轮重试。改截止时间或提前量、恢复为待办可以重置事项提醒，编辑标题和备注应保留原标记。事项可在休眠或重启后补提醒，日报和周报在对应的本地日期或星期触发，已保存的对应总结跳过提醒。
 - 「今日到期」和「已逾期」可包含同一项。「今日完成」统计当天，点击后打开全部「已完成」列表。待办按截止时间排序，无截止事项放末尾，已完成按完成时间倒序。改卡片样式时检查状态文字、颜色和筛选联动。
 
@@ -42,7 +42,7 @@
 
 - 构建产出 `dist/WorkDesk.exe`。[StateChecks.cs](./tests/StateChecks.cs) 覆盖状态、存储、时间和导出。[DesktopChecks.cs](./tests/DesktopChecks.cs) 覆盖 WPF 与桌面交互。可用 `./build.ps1 -DesktopChecks` 单独构建 `dist/DesktopChecks.exe`。
 - XAML 作为资源随 EXE 打包，启动时由 `XamlReader.Load` 解析。修改 XAML、资源键、控件名称或模板后，编译通过仍需跑桌面检查。涉及布局、托盘、剪贴板或导出时，再用样例走一遍对应入口，记录实际看到的结果。
-- 发布新版时同步更新 `Program.cs` 中两个版本号及 [WorkDesk.manifest](./src/WorkDesk.manifest) 中的版本号，用 `release/WorkDesk-vX.Y.Z.exe` 命名成品，更新 README 下载链接及实际文件的 SHA-256。`dist/` 是本地构建目录，用户数据和真实工作截图留在本地。
-- 开工确认仓库和当前分支。已授权里程碑推送时，每次只提交与该里程碑相关的改动，运行有关检查后正常推送并核对 GitHub 上的结果。
+- 发布新版时同步更新 `Program.cs` 中两个版本号及 [WorkDesk.manifest](./src/WorkDesk.manifest) 中的版本号，用 `release/WorkDesk-vX.Y.Z.exe` 命名成品，更新 README 下载链接及实际文件的 SHA-256。在 [CHANGELOG.md](./CHANGELOG.md) 记录相对上一版的用户可见改动和升级要点。`dist/` 是本地构建目录，用户数据和真实工作截图留在本地。
+- 开工确认仓库和当前分支。每次提交写明改动和原因，只纳入与当前里程碑相关的内容。运行有关检查后，按用户授权的目标正常推送并逐一核对结果。
 
 新回归查明后，把复现条件、应保留的行为和验证方式补到对应小节。

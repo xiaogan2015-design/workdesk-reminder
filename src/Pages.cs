@@ -452,7 +452,7 @@ namespace WorkDesk
 
             var local = new StackPanel();
             local.Children.Add(Ui.Text("托盘与本地数据", "SectionTitle"));
-            var startup = new CheckBox { Content = "登录 Windows 后启动工笺", Margin = new Thickness(0, 11, 0, 0), Style = Ui.Style("FormToggle") };
+            var startup = new CheckBox { Content = "登录 Windows 后启动待办笔记", Margin = new Thickness(0, 11, 0, 0), Style = Ui.Style("FormToggle") };
             try { startup.IsChecked = StartupRegistration.Enabled; }
             catch (Exception ex) { startup.IsEnabled = false; startup.ToolTip = ex.Message; }
             bool reverting = false;
@@ -471,7 +471,7 @@ namespace WorkDesk
             startup.Checked += changeStartup;
             startup.Unchecked += changeStartup;
             local.Children.Add(startup);
-            var hint = Ui.Text("关闭窗口后，工笺会留在系统托盘。备份文件可以另存到你选择的位置。", "Hint");
+            var hint = Ui.Text("关闭窗口后，待办笔记会留在系统托盘。备份文件可以另存到你选择的位置。", "Hint");
             hint.Margin = new Thickness(0, 9, 0, 8);
             local.Children.Add(hint);
             var backup = Ui.Button("导出全部备份", delegate { ExportBackup(); });
@@ -598,7 +598,7 @@ namespace WorkDesk
 
         private void ExportBackup()
         {
-            ExportFile("工笺备份-" + WorkState.PeriodKey(DateTime.Today, false),
+            ExportFile("待办笔记备份-" + WorkState.PeriodKey(DateTime.Today, false),
                 "完整数据备份 (*.json)|*.json|" + ReportFormats, dialog => {
                     if (System.IO.Path.GetExtension(dialog.FileName).Equals(".json", StringComparison.OrdinalIgnoreCase)) store.BackUp(dialog.FileName, state);
                     else MarkdownExport.WriteWithImages(store, dialog.FileName, MarkdownExport.Archive(state, DateTimeOffset.Now),

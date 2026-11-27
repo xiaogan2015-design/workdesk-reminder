@@ -296,7 +296,7 @@ namespace WorkDesk
 
         private void Delete(object sender, RoutedEventArgs e)
         {
-            var prompt = new DeskPrompt(this, "删除事项？", "「" + original.Title + "」将从事项清单移除，删除后无法在工笺内撤销。",
+            var prompt = new DeskPrompt(this, "删除事项？", "「" + original.Title + "」将从事项清单移除。此操作无法撤销。",
                 confirm: "删除事项");
             if (prompt.ShowDialog() != true) return;
             if (persist(null)) DialogResult = true;

@@ -9,7 +9,7 @@
                         <TextBlock Text="&#xE73A;" FontFamily="Segoe MDL2 Assets" FontSize="21" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" />
                     </Border>
                     <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                        <TextBlock Text="工笺" FontWeight="Bold" FontSize="{DynamicResource SectionSize}" Foreground="White" />
+                        <TextBlock Text="待办笔记" FontWeight="Bold" FontSize="{DynamicResource SectionSize}" Foreground="White" />
                         <TextBlock Text="WORKDESK" FontSize="9" FontWeight="SemiBold" Foreground="#C1B3E4" />
                     </StackPanel>
                 </StackPanel>

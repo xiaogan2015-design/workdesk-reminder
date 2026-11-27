@@ -23,7 +23,7 @@ namespace WorkDesk
         {
             this.store = store;
             this.state = state;
-            Title = "工笺 · WorkDesk";
+            Title = "待办笔记 · WorkDesk";
             Ui.ApplyTypography(state.Appearance);
             SetResourceReference(FontFamilyProperty, "InterfaceFont");
             Foreground = (Brush)FindResource("Ink");

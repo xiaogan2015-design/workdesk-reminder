@@ -71,10 +71,10 @@ namespace WorkDesk
             };
             openIcon = TrayMenuRenderer.Icon("\uE80F", "#6040CB");
             exitIcon = TrayMenuRenderer.Icon("\uE8AC", "#9D3E54");
-            AddTrayItem("打开工笺", openIcon, "#211A37", delegate { window.ShowWorkspace(); });
+            AddTrayItem("打开待办笔记", openIcon, "#211A37", delegate { window.ShowWorkspace(); });
             menu.Items.Add(new Forms.ToolStripSeparator());
-            AddTrayItem("退出工笺", exitIcon, "#9D3E54", delegate { Exit(); });
-            tray = new Forms.NotifyIcon { Icon = icon ?? Drawing.SystemIcons.Application, Text = "工笺 · WorkDesk", ContextMenuStrip = menu };
+            AddTrayItem("退出待办笔记", exitIcon, "#9D3E54", delegate { Exit(); });
+            tray = new Forms.NotifyIcon { Icon = icon ?? Drawing.SystemIcons.Application, Text = "待办笔记 · WorkDesk", ContextMenuStrip = menu };
             tray.DoubleClick += delegate { window.ShowWorkspace(); };
             window.Closing += HideWindow;
             app.SessionEnding += SessionEnding;
@@ -265,7 +265,7 @@ namespace WorkDesk
 
         public ReminderPopup(ReminderBatch batch, FontFamily font, Func<bool?, bool> open)
         {
-            Title = "工笺提醒";
+            Title = "待办笔记提醒";
             FontFamily = font;
             Foreground = (Brush)FindResource("Ink");
             WindowStyle = WindowStyle.None;
@@ -286,7 +286,7 @@ namespace WorkDesk
             AutomationProperties.SetName(close, "关闭提醒");
             DockPanel.SetDock(close, Dock.Right);
             header.Children.Add(close);
-            header.Children.Add(Ui.Text("工笺提醒", "SectionTitle"));
+            header.Children.Add(Ui.Text(Title, "SectionTitle"));
             contents.Children.Add(header);
 
             if (batch.Tasks.Length > 0)

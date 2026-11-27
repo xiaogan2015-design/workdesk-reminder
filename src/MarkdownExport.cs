@@ -27,7 +27,7 @@ namespace WorkDesk
 
         public static string Archive(WorkState state, DateTimeOffset now)
         {
-            var output = new StringBuilder("# 工笺备份\n\n导出日期：");
+            var output = new StringBuilder("# 待办笔记备份\n\n导出日期：");
             output.Append(WorkState.PeriodKey(now.Date, false)).Append("\n\n## 事项清单\n\n");
             AppendPlan(output, state, now, "###");
             output.Append("## 工作总结\n\n");
@@ -143,7 +143,7 @@ namespace WorkDesk
                 using (var writer = new StreamWriter(output, new UTF8Encoding(false), 1024, true))
                 {
                     writer.Write("<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
-                    writer.Write("<title>工笺 · 工作记录</title><style>body{background:#f5f5fb;color:#211a37;font:16px/1.65 'Segoe UI','Microsoft YaHei UI',sans-serif;margin:0;padding:24px}main{max-width:900px;margin:auto;background:white;border:1px solid #e8e4f1;border-radius:14px;padding:clamp(16px,4vw,32px);white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%;height:auto;display:block;margin:.65em 0;border-radius:8px}</style></head><body><main>");
+                    writer.Write("<title>待办笔记 · 工作记录</title><style>body{background:#f5f5fb;color:#211a37;font:16px/1.65 'Segoe UI','Microsoft YaHei UI',sans-serif;margin:0;padding:24px}main{max-width:900px;margin:auto;background:white;border:1px solid #e8e4f1;border-radius:14px;padding:clamp(16px,4vw,32px);white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%;height:auto;display:block;margin:.65em 0;border-radius:8px}</style></head><body><main>");
                     int start = 0;
                     foreach (Match match in SummaryImage.Reference.Matches(data))
                     {

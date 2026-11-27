@@ -85,7 +85,8 @@ internal static class StateChecks
         string dailyMarkdown = MarkdownExport.Summary(false, today, formatted);
         Check(dailyMarkdown.Contains("日报 · 2026-11-27\n\n    保留 Markdown 缩进\n\n- 工作事项"), "Individual Markdown preserves formatting");
         string archive = MarkdownExport.Archive(state, now);
-        Check(archive.Contains("日报 · 2026-11-27") && archive.Contains("周报 · 2026-11-23 至 2026-11-29") &&
+        Check(archive.StartsWith("# 待办笔记备份\n", StringComparison.Ordinal) &&
+            archive.Contains("日报 · 2026-11-27") && archive.Contains("周报 · 2026-11-23 至 2026-11-29") &&
             archive.Contains("本周工作已更新") && archive.Contains("复核发布清单"), "Archive contains tasks and reports");
 
         var folder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WorkDesk.Checks." + Guid.NewGuid().ToString("N"));

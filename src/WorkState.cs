@@ -346,7 +346,7 @@ namespace WorkDesk
             destination = Path.GetFullPath(destination);
             string livePath = Path.GetFullPath(path);
             if (new[] { livePath, livePath + ".bak", livePath + ".tmp" }.Contains(destination, StringComparer.OrdinalIgnoreCase))
-                throw new IOException("请选择其他位置，避免覆盖工笺正在使用的数据文件。");
+                throw new IOException("请选择其他位置，避免覆盖待办笔记正在使用的数据文件。");
             string temporary = Path.Combine(Path.GetDirectoryName(destination), ".workdesk-" + Guid.NewGuid().ToString("N") + ".tmp");
             try { WriteAtomic(destination, temporary, null, write); }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }

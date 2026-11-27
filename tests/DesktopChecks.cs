@@ -51,6 +51,8 @@ namespace WorkDesk
             var window = new MainWindow(store, store.Load());
             window.Show();
             window.UpdateLayout();
+            Check(window.Title == "待办笔记 · WorkDesk" && Descendants<TextBlock>(window).Any(block => block.Text == "待办笔记"),
+                "The window title and sidebar show the current app name.");
             var add = window.Element<Button>("NewTask");
             var rows = window.Element<StackPanel>("TaskRows");
             Check(window.Element<TextBlock>("PendingCount").Text == "0", "An empty dashboard starts at zero.");

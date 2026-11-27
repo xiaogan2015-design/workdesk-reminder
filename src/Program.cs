@@ -5,12 +5,12 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Markup;
 
-[assembly: AssemblyTitle("工笺 · WorkDesk")]
-[assembly: AssemblyProduct("WorkDesk")]
+[assembly: AssemblyTitle("待办笔记 · WorkDesk")]
+[assembly: AssemblyProduct("待办笔记")]
 [assembly: AssemblyDescription("Windows 工作待办与总结")]
 [assembly: System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.8", FrameworkDisplayName = ".NET Framework 4.8")]
-[assembly: AssemblyVersion("1.5.0.0")]
-[assembly: AssemblyFileVersion("1.5.0.0")]
+[assembly: AssemblyVersion("1.5.1.0")]
+[assembly: AssemblyFileVersion("1.5.1.0")]
 
 namespace WorkDesk
 {
@@ -55,7 +55,7 @@ namespace WorkDesk
             }
             catch (Exception ex)
             {
-                new DeskPrompt(null, "工笺无法启动", "请检查下方错误详情。", ex.Message + "\n\n数据文件：" + store.FilePath).ShowDialog();
+                new DeskPrompt(null, "待办笔记无法启动", "请检查下方错误详情。", ex.Message + "\n\n数据文件：" + store.FilePath).ShowDialog();
                 return 1;
             }
         }
