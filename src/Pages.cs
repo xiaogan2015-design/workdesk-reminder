@@ -15,7 +15,7 @@ namespace WorkDesk
     {
         private const string ReportFormats = "Markdown（内嵌图片） (*.md)|*.md|网页（内嵌图片） (*.html)|*.html|Markdown 和图片压缩包 (*.zip)|*.zip";
         private const string DefaultFontChoice = "系统默认字体";
-        private enum DeskPage { Desk, Archive, Summary, Settings }
+        private enum DeskPage { Desk, Archive, Summary, Settings, Help }
         private static readonly string[] Weekdays = { "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六" };
         private DeskPage page;
         private StackPanel archiveRows;
@@ -51,6 +51,7 @@ namespace WorkDesk
             archive.Click += delegate { OpenArchive(); };
             summary.Click += delegate { if (page != DeskPage.Summary) OpenSummary(DateTime.Today, false); };
             settings.Click += delegate { OpenSettings(); };
+            Element<Button>("HelpButton").Click += delegate { OpenHelp(); };
             Element<Button>("TodaySummary").Click += delegate { OpenSummary(DateTime.Today, false); };
             Element<Button>("OpenSettings").Click += delegate { OpenSettings(); };
             Element<Button>("CopyPlan").Click += delegate { CopyMarkdown(MarkdownExport.Plan(state, DateTimeOffset.Now)); };
@@ -179,6 +180,7 @@ namespace WorkDesk
             Element<Button>("ArchiveNav").Style = Ui.Style(next == DeskPage.Archive ? "ActiveNav" : "Nav");
             Element<Button>("SummaryNav").Style = Ui.Style(next == DeskPage.Summary ? "ActiveNav" : "Nav");
             Element<Button>("SettingsNav").Style = Ui.Style(next == DeskPage.Settings ? "ActiveNav" : "Nav");
+            Element<Button>("HelpButton").Style = next == DeskPage.Help ? Ui.Style("Quiet") : (Style)TryFindResource(typeof(Button));
             Element<StackPanel>("Dashboard").Visibility = next == DeskPage.Desk ? Visibility.Visible : Visibility.Collapsed;
             var other = Element<ContentControl>("OtherPage");
             other.Content = content;

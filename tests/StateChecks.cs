@@ -198,6 +198,7 @@ internal static class StateChecks
             try { MarkdownExport.Write(store, store.FilePath, archive); throw new Exception("The live file cannot be exported over."); }
             catch (IOException) { Check(store.Load().Tasks.Count == 3, "Export cannot replace the live state file"); }
             CheckTaskArchiving(store, backup, now);
+            CheckDailyChecklist(store, backup, today);
         }
         finally
         {
@@ -215,6 +216,22 @@ internal static class StateChecks
             if (Directory.Exists(folder)) Directory.Delete(folder);
         }
         Console.WriteLine("Passed {0} state and reminder checks.", assertions);
+    }
+
+    private static void CheckDailyChecklist(StateStore store, StateStore backup, DateTime today)
+    {
+        var state = store.Load();
+        var steps = state.GetDailyChecklist(today);
+        Check(steps.Length == 6 && !steps.Any(step => step), "Existing data starts with an empty daily checklist.");
+        var next = state.Copy();
+        steps[1] = true;
+        next.SetDailyChecklist(today, steps);
+        steps[1] = false;
+        Check(next.GetDailyChecklist(today)[1] && !state.GetDailyChecklist(today)[1], "A staged checklist update leaves the current state and caller array independent.");
+        store.Save(next);
+        store.BackUp(backup.FilePath, next);
+        Check(store.Load().GetDailyChecklist(today)[1] && backup.Load().GetDailyChecklist(today)[1], "The local state and JSON backup retain daily checklist progress.");
+        Check(!store.Load().GetDailyChecklist(today.AddDays(1)).Any(step => step), "A new local date starts a new checklist.");
     }
 
     private static void CheckTaskArchiving(StateStore store, StateStore backup, DateTimeOffset now)

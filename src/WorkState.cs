@@ -170,6 +170,8 @@ namespace WorkDesk
     [DataContract]
     internal sealed class WorkState
     {
+        public const int DailyChecklistLength = 6;
+
         [DataMember] public int Version = 1;
         [DataMember] public List<WorkItem> Tasks = new List<WorkItem>();
         [DataMember] public List<WorkSummary> Summaries = new List<WorkSummary>();
@@ -178,6 +180,8 @@ namespace WorkDesk
         [DataMember(EmitDefaultValue = false)] public ArchiveSettings Archiving = new ArchiveSettings();
         [DataMember] public string LastDailyReminder;
         [DataMember] public string LastWeeklyReminder;
+        [DataMember(EmitDefaultValue = false)] private string DailyChecklistDate;
+        [DataMember(EmitDefaultValue = false)] private bool[] DailyChecklistSteps;
 
         public static DateTime WeekStart(DateTime date)
         {
@@ -187,6 +191,20 @@ namespace WorkDesk
         public static string PeriodKey(DateTime date, bool weekly)
         {
             return (weekly ? WeekStart(date) : date.Date).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        }
+
+        public bool[] GetDailyChecklist(DateTime date)
+        {
+            if (DailyChecklistDate != PeriodKey(date, false) || DailyChecklistSteps == null || DailyChecklistSteps.Length != DailyChecklistLength)
+                return new bool[DailyChecklistLength];
+            return (bool[])DailyChecklistSteps.Clone();
+        }
+
+        public void SetDailyChecklist(DateTime date, bool[] steps)
+        {
+            if (steps.Length != DailyChecklistLength) throw new ArgumentException("Unexpected daily checklist length.", "steps");
+            DailyChecklistDate = PeriodKey(date, false);
+            DailyChecklistSteps = (bool[])steps.Clone();
         }
 
         public WorkSummary FindSummary(DateTime date, bool weekly)

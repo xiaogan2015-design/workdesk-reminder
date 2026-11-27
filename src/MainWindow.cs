@@ -77,6 +77,7 @@ namespace WorkDesk
             clockMinute = minute;
             if (page == DeskPage.Desk) RefreshDashboard();
             else Element<TextBlock>("DateLabel").Text = now.ToString("M月d日 dddd", Chinese);
+            if (page == DeskPage.Help && checklistDay != now.Date) RefreshHelpChecklist(now.Date);
         }
 
         internal void Banner(string message)

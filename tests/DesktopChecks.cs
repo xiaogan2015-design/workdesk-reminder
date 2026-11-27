@@ -124,6 +124,34 @@ namespace WorkDesk
             CheckSummariesAndReminders(store);
             CheckTaskShortcutsAndScrolling(store);
             CheckTaskArchiving(store);
+            CheckHelpPage(store);
+        }
+
+        private static void CheckHelpPage(StateStore store)
+        {
+            var window = new MainWindow(store, store.Load());
+            window.Show();
+            Click(window.Element<Button>("HelpButton"));
+            var page = window.Element<ContentControl>("OtherPage");
+            var steps = Descendants<CheckBox>(page).ToArray();
+            Check(window.Element<TextBlock>("PageTitle").Text == "帮助" && steps.Length == 6 &&
+                Descendants<TextBlock>(page).Any(block => block.Text == "十个待办处理技巧") &&
+                Descendants<TextBlock>(page).Any(block => block.Text == "研发工作常用的六种清单状态"),
+                "The Help button opens the guide and six interactive checklist steps.");
+            steps[0].IsChecked = true;
+            steps[0].RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            Check(store.Load().GetDailyChecklist(DateTime.Today)[0] && Descendants<TextBlock>(page).Any(block => block.Text == "1/6"),
+                "Checking a step saves it and updates progress.");
+            window.RefreshClock(DateTimeOffset.Now.AddDays(1));
+            Check(steps.All(step => step.IsChecked == false) && Descendants<TextBlock>(page).Any(block => block.Text == "0/6"),
+                "An open help page resets its display when the local day changes.");
+            Click(window.Element<Button>("DeskNav"));
+            Click(window.Element<Button>("HelpButton"));
+            Check(Descendants<CheckBox>(page).First().IsChecked == true, "Reopening Help restores today's saved progress.");
+            Click(Descendants<Button>(page).Single(button => (string)button.Content == "重置清单"));
+            Check(store.Load().GetDailyChecklist(DateTime.Today).All(step => !step) &&
+                Descendants<TextBlock>(page).Any(block => block.Text == "0/6"), "Reset clears and saves today's checklist.");
+            window.Close();
         }
 
         private static void CheckDeletePrompt(MainWindow window, StateStore store, bool confirm)
