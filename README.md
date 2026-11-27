@@ -4,15 +4,15 @@
 
 ## 下载
 
-[下载待办笔记 v1.8.0](./release/WorkDesk-v1.8.0.exe?raw=true)
+[下载待办笔记 v1.8.1](./release/WorkDesk-v1.8.1.exe?raw=true) · [历史版本](https://github.com/xiaogan2015-design/workdesk-reminder/releases)
 
-当前版本的单文件 EXE **小于 200 KB**，实测为 **193,536 字节**。
+当前版本的单文件 EXE **小于 200 KB**，实测为 **197,120 字节**。
 
 下载后双击 EXE，即可在装有 .NET Framework 4.8 或 4.8.1 的 Windows 10／11 上运行。更新前请先从托盘退出旧版，再打开新版。
 
-SHA-256：`81a4899ffbe807ea1b854da416f7167aa70667fd4bd838caeca71a30a9b4daa9`
+SHA-256：`7ab1c8ecd5fc5ed6a0d5a9ca0be97e10d8546123476dba9050f5a89b9d9a015d`
 
-[查看 v1.8.0 的改动](./CHANGELOG.md#v180)
+[查看 v1.8.1 的改动](./CHANGELOG.md#v181)
 
 ## 界面预览
 
@@ -28,7 +28,7 @@ SHA-256：`81a4899ffbe807ea1b854da416f7167aa70667fd4bd838caeca71a30a9b4daa9`
 
 ### 工作规划
 
-从待办中选最多三项作为今日重点，支持调序、移出和勾选完成。工作台显示当天的重点。四象限按重要性和紧急程度手动分类，可把筛选结果直接加入今日重点。
+从下拉框选择最多三项待办作为今日重点，支持在任务卡片内调序、移出和勾选完成。工作台显示当天的重点。在四象限坐标上选择一个区域，可筛选对应事项，并在卡片内重新分类或加入今日重点。
 
 ![今日重点的三项任务与调整顺序按钮](docs/images/focus-planner.png)
 

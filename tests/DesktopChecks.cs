@@ -610,16 +610,39 @@ namespace WorkDesk
             window.Show();
             Click(window.Element<Button>("OpenFocus"));
             var page = window.Element<ContentControl>("OtherPage");
+            var picker = Find<ComboBox>(page, "选择待办事项");
+            window.UpdateLayout();
+            window.Dispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(delegate { }));
+            var selectedLabel = VisualText(picker).Single(label => label.Text == "整理发布记录");
+            Check(picker.Items.Cast<string>().SequenceEqual(state.Tasks.Select(task => task.Title)) &&
+                selectedLabel.TextTrimming == TextTrimming.CharacterEllipsis,
+                "The picker displays task names in the collapsed field and in its options.");
+            picker.IsDropDownOpen = true;
+            window.UpdateLayout();
+            window.Dispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(delegate { }));
+            var popup = (Popup)picker.Template.FindName("PART_Popup", picker);
+            if (popup.Child != null) popup.Child.UpdateLayout();
+            Check(popup.IsOpen && VisualText(popup.Child).Any(label => label.Text == "下周安排"),
+                "The themed popup renders the actual task names.");
+            picker.IsDropDownOpen = false;
             for (int i = 0; i < 3; i++) Click(Descendants<Button>(page).Single(button => button.Content as string == "加入今日重点"));
             Check(store.Load().FocusItems(today).Select(item => item.Title).SequenceEqual(new[] { "整理发布记录", "补充验收清单", "评审反馈" }) &&
                 !Descendants<Button>(page).Single(button => button.Content as string == "加入今日重点").IsEnabled,
                 "The planner saves three ordered focus tasks and disables the fourth selection.");
+            Check(Find<Button>(page, "编辑事项：补充验收清单").Parent == Find<Button>(page, "移出重点：补充验收清单").Parent &&
+                ((StackPanel)Find<Button>(page, "上移：补充验收清单").Parent).Orientation == Orientation.Horizontal,
+                "Focus row actions share one horizontal group with Edit.");
             Click(Find<Button>(page, "上移：补充验收清单"));
             Check(store.Load().FocusItems(today).First().Title == "补充验收清单", "Focus order is saved when moved.");
             Find<CheckBox>(page, "标记完成：补充验收清单").IsChecked = true;
             Check(store.Load().FocusItems(today).First().CompletedUtc.HasValue, "Completed focus tasks remain visible today.");
             Click(Find<Button>(page, "移出重点：评审反馈"));
             Click(Descendants<Button>(page).Single(button => button.Content as string == "四象限"));
+            Check(Grid.GetColumn(Find<Button>(page, "重要且紧急")) > Grid.GetColumn(Find<Button>(page, "重要不紧急")) &&
+                Grid.GetRow(Find<Button>(page, "重要且紧急")) < Grid.GetRow(Find<Button>(page, "紧急不重要")),
+                "The matrix increases urgency to the right and importance upward.");
+            Check(Find<Button>(page, "编辑事项：下周安排").Parent == Find<ComboBox>(page, "分类：下周安排").Parent,
+                "Quadrant assignment shares the task row with Edit.");
             Find<ComboBox>(page, "分类：下周安排").SelectedIndex = (int)TaskQuadrant.Schedule;
             Click(Find<Button>(page, "重要不紧急"));
             Check(store.Load().Tasks.Single(item => item.Quadrant == TaskQuadrant.Schedule).Title == "下周安排" &&
@@ -672,6 +695,15 @@ namespace WorkDesk
         {
             if (!condition) throw new InvalidOperationException(message);
             assertions++;
+        }
+
+        private static IEnumerable<TextBlock> VisualText(DependencyObject root)
+        {
+            if (root == null) yield break;
+            var label = root as TextBlock;
+            if (label != null) yield return label;
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+                foreach (var text in VisualText(VisualTreeHelper.GetChild(root, i))) yield return text;
         }
     }
 }

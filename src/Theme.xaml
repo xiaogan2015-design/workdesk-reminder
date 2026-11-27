@@ -158,6 +158,31 @@
             </Setter.Value>
         </Setter>
     </Style>
+    <DataTemplate x:Key="PlanningOption">
+        <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" ToolTip="{Binding}" />
+    </DataTemplate>
+    <Style TargetType="ComboBoxItem">
+        <Setter Property="Padding" Value="9,7" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource Ink}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBoxItem">
+                    <Border x:Name="Option" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="5">
+                        <ContentPresenter />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="Option" Property="Background" Value="#F5F1FE" /></Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Option" Property="Background" Value="{StaticResource Lilac}" />
+                            <Setter Property="Foreground" Value="#492A9E" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
     <Style TargetType="ComboBox">
         <Setter Property="MinHeight" Value="36" />
         <Setter Property="FontSize" Value="{DynamicResource BodySize}" />
@@ -179,14 +204,16 @@
                                 <DockPanel Margin="{TemplateBinding Padding}" IsHitTestVisible="False">
                                     <TextBlock DockPanel.Dock="Right" FontFamily="Segoe MDL2 Assets" Text="&#xE70D;" FontSize="11"
                                                VerticalAlignment="Center" Foreground="{StaticResource Violet}" Margin="6,0,2,0" />
-                                    <ContentPresenter Content="{TemplateBinding SelectionBoxItem}" VerticalAlignment="Center" />
+                                    <ContentPresenter Content="{TemplateBinding SelectionBoxItem}"
+                                                      ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                      ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}" VerticalAlignment="Center" />
                                 </DockPanel>
                             </Grid>
                         </Border>
                         <Popup x:Name="PART_Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" Focusable="False" AllowsTransparency="True">
-                            <Border MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                            <Border Width="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}"
                                     Background="White" BorderBrush="#DDD6EC" BorderThickness="1" CornerRadius="8" Padding="3" Margin="0,4,0,0">
-                                <ScrollViewer VerticalScrollBarVisibility="Auto"><ItemsPresenter /></ScrollViewer>
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><ItemsPresenter /></ScrollViewer>
                             </Border>
                         </Popup>
                     </Grid>

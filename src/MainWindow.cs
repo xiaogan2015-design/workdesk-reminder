@@ -176,7 +176,7 @@ namespace WorkDesk
             foreach (var item in items) rows.Children.Add(TaskRow(item, now));
         }
 
-        private Border TaskRow(WorkItem item, DateTimeOffset now)
+        private Border TaskRow(WorkItem item, DateTimeOffset now, StackPanel actions = null)
         {
             StatusTone tone = item.CompletedUtc.HasValue ? StatusTone.Completed :
                 item.IsOverdue(now.UtcDateTime) ? StatusTone.Overdue :
@@ -199,12 +199,23 @@ namespace WorkDesk
             action.Margin = new Thickness(8, 0, 0, 0);
             action.VerticalAlignment = VerticalAlignment.Center;
             AutomationProperties.SetName(action, (archived ? "恢复归档事项：" : "编辑事项：") + item.Title);
-            DockPanel.SetDock(action, Dock.Right);
-            row.Children.Add(action);
+            FrameworkElement trailing = action;
+            if (actions != null)
+            {
+                actions.Children.Add(action);
+                trailing = actions;
+            }
+            DockPanel.SetDock(trailing, Dock.Right);
+            row.Children.Add(trailing);
 
             var details = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             var title = Ui.Text(item.Title);
-            title.TextWrapping = TextWrapping.Wrap;
+            title.TextWrapping = actions == null ? TextWrapping.Wrap : TextWrapping.NoWrap;
+            if (actions != null)
+            {
+                title.TextTrimming = TextTrimming.CharacterEllipsis;
+                title.ToolTip = item.Title;
+            }
             title.FontWeight = FontWeights.SemiBold;
             details.Children.Add(title);
             var metadata = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
