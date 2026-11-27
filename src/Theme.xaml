@@ -73,9 +73,10 @@
     <Style x:Key="Nav" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Foreground" Value="#DBD3EF" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
-        <Setter Property="Padding" Value="13,12" />
+        <Setter Property="Padding" Value="14,13" />
         <Setter Property="Margin" Value="0,0,0,6" />
     </Style>
     <Style x:Key="ActiveNav" TargetType="Button" BasedOn="{StaticResource Nav}">
@@ -231,6 +232,43 @@
         <Setter Property="FontSize" Value="{DynamicResource BodySize}" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style x:Key="TaskCompletion" TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
+        <Setter Property="Width" Value="29" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <Grid x:Name="Target" Background="Transparent">
+                        <Border x:Name="Ring" Width="26" Height="26" CornerRadius="8" BorderThickness="1.5" />
+                        <Border x:Name="Box" Width="19" Height="19" CornerRadius="5" Background="White"
+                                BorderBrush="#AA9BBF" BorderThickness="1">
+                            <Path x:Name="Check" Visibility="Collapsed" Data="M 2,6 L 5,9 L 10,3"
+                                  Stroke="White" StrokeThickness="1.8" StrokeLineJoin="Round"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Ring" Property="Background" Value="#EDE8FD" />
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Violet}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Box" Property="Background" Value="{StaticResource Violet}" />
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Violet}" />
+                            <Setter TargetName="Check" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Ring" Property="BorderBrush" Value="#8F6DDE" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Target" Property="Opacity" Value="0.78" /></Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Target" Property="Opacity" Value="0.48" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
     <Style x:Key="FormToggle" TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
         <Setter Property="FontWeight" Value="SemiBold" />

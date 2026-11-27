@@ -4,15 +4,15 @@
 
 ## 下载
 
-[下载待办笔记 v1.8.1](./release/WorkDesk-v1.8.1.exe?raw=true) · [历史版本](https://github.com/xiaogan2015-design/workdesk-reminder/releases)
+[下载待办笔记 v1.8.2](./release/WorkDesk-v1.8.2.exe?raw=true) · [历史版本](https://github.com/xiaogan2015-design/workdesk-reminder/releases)
 
-当前版本的单文件 EXE **小于 200 KB**，实测为 **197,120 字节**。
+当前版本的单文件 EXE **小于 200 KiB**，实测为 **201,216 字节**。
 
 下载后双击 EXE，即可在装有 .NET Framework 4.8 或 4.8.1 的 Windows 10／11 上运行。更新前请先从托盘退出旧版，再打开新版。
 
-SHA-256：`7ab1c8ecd5fc5ed6a0d5a9ca0be97e10d8546123476dba9050f5a89b9d9a015d`
+SHA-256：`44a32b0d15c4ac2bb401bccf9b60819fe3cf7ef4e0bb780d3e0dbdd14fa12653`
 
-[查看 v1.8.1 的改动](./CHANGELOG.md#v181)
+[查看 v1.8.2 的改动](./CHANGELOG.md#v182)
 
 ## 界面预览
 

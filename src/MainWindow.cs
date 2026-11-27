@@ -186,8 +186,8 @@ namespace WorkDesk
             if (!archived)
             {
                 var check = new CheckBox {
-                    IsChecked = item.CompletedUtc.HasValue, VerticalAlignment = VerticalAlignment.Center,
-                    Width = 23, MinHeight = 29, Margin = new Thickness(1, 0, 5, 0)
+                    IsChecked = item.CompletedUtc.HasValue, Style = Ui.Style("TaskCompletion"),
+                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0)
                 };
                 AutomationProperties.SetName(check, (item.CompletedUtc.HasValue ? "恢复待办：" : "标记完成：") + item.Title);
                 check.Checked += delegate { ToggleCompletion(item.Id, true); };

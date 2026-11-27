@@ -4,6 +4,8 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Shapes;
 
 namespace WorkDesk
 {
@@ -194,57 +196,87 @@ namespace WorkDesk
         private Grid BuildQuadrantMatrix(WorkItem[] pending)
         {
             var matrix = new Grid { Margin = new Thickness(0, 12, 0, 0) };
-            matrix.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(80) });
+            Grid.SetIsSharedSizeScope(matrix, true);
             matrix.ColumnDefinitions.Add(new ColumnDefinition());
+            matrix.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
             matrix.ColumnDefinitions.Add(new ColumnDefinition());
-            matrix.RowDefinitions.Add(new RowDefinition());
-            matrix.RowDefinitions.Add(new RowDefinition());
+            matrix.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            matrix.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto, SharedSizeGroup = "QuadrantRow" });
+            matrix.RowDefinitions.Add(new RowDefinition { Height = new GridLength(24) });
+            matrix.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto, SharedSizeGroup = "QuadrantRow" });
             matrix.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            var vertical = new DockPanel { Margin = new Thickness(0, 5, 8, 5) };
-            var high = Ui.Text("高 ↑", "Hint");
-            var low = Ui.Text("低", "Hint");
-            DockPanel.SetDock(high, Dock.Top);
-            DockPanel.SetDock(low, Dock.Bottom);
-            vertical.Children.Add(high);
-            vertical.Children.Add(low);
             var important = Ui.Text("重要程度", "Hint");
-            important.VerticalAlignment = VerticalAlignment.Center;
-            important.TextWrapping = TextWrapping.Wrap;
-            vertical.Children.Add(important);
-            Grid.SetRowSpan(vertical, 2);
+            important.HorizontalAlignment = HorizontalAlignment.Center;
+            important.Margin = new Thickness(0, 0, 0, 6);
+            Grid.SetColumnSpan(important, 3);
+            matrix.Children.Add(important);
+            var urgent = Ui.Text("紧急程度", "Hint");
+            urgent.HorizontalAlignment = HorizontalAlignment.Right;
+            urgent.Margin = new Thickness(0, 6, 18, 0);
+            Grid.SetRow(urgent, 4);
+            Grid.SetColumnSpan(urgent, 3);
+            matrix.Children.Add(urgent);
+
+            var vertical = QuadrantAxis(true);
+            Grid.SetRow(vertical, 1);
+            Grid.SetRowSpan(vertical, 3);
+            Grid.SetColumn(vertical, 1);
             matrix.Children.Add(vertical);
 
-            var horizontal = new DockPanel { Margin = new Thickness(5, 0, 5, 0) };
-            var left = Ui.Text("低", "Hint");
-            var right = Ui.Text("高", "Hint");
-            DockPanel.SetDock(right, Dock.Right);
-            horizontal.Children.Add(right);
-            horizontal.Children.Add(left);
-            var urgent = Ui.Text("紧急程度 →", "Hint");
-            urgent.HorizontalAlignment = HorizontalAlignment.Center;
-            horizontal.Children.Add(urgent);
+            var horizontal = QuadrantAxis(false);
+            horizontal.Margin = new Thickness(18, 0, 18, 0);
             Grid.SetRow(horizontal, 2);
-            Grid.SetColumn(horizontal, 1);
-            Grid.SetColumnSpan(horizontal, 2);
+            Grid.SetColumnSpan(horizontal, 3);
             matrix.Children.Add(horizontal);
 
-            var axis = new Border { BorderBrush = Ui.Color("#DDD3EF"), BorderThickness = new Thickness(1, 0, 0, 1),
-                IsHitTestVisible = false, Margin = new Thickness(0, 0, 0, 3) };
-            Grid.SetColumn(axis, 1);
-            Grid.SetColumnSpan(axis, 2);
-            Grid.SetRowSpan(axis, 2);
-            matrix.Children.Add(axis);
+            var origin = new Ellipse {
+                Width = 10, Height = 10, Fill = Brushes.White, Stroke = Ui.Color("#5D35BC"), StrokeThickness = 2,
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false
+            };
+            Grid.SetRow(origin, 2);
+            Grid.SetColumn(origin, 1);
+            matrix.Children.Add(origin);
 
             var positions = new[] { TaskQuadrant.Schedule, TaskQuadrant.DoNow, TaskQuadrant.Reduce, TaskQuadrant.Delegate };
             for (int i = 0; i < positions.Length; i++)
             {
                 var button = QuadrantFilter(positions[i], pending);
-                Grid.SetRow(button, i / 2);
-                Grid.SetColumn(button, 1 + i % 2);
+                Grid.SetRow(button, 1 + (i / 2) * 2);
+                Grid.SetColumn(button, (i % 2) * 2);
                 matrix.Children.Add(button);
             }
             return matrix;
+        }
+
+        private static Grid QuadrantAxis(bool vertical)
+        {
+            var rail = new Grid { IsHitTestVisible = false };
+            AutomationProperties.SetName(rail, vertical ? "重要程度，向上越高" : "紧急程度，向右越高");
+            for (int i = 0; i < 2; i++)
+            {
+                if (vertical) rail.RowDefinitions.Add(new RowDefinition());
+                else rail.ColumnDefinitions.Add(new ColumnDefinition());
+                var stroke = new Border {
+                    Background = Ui.Color(i == (vertical ? 0 : 1) ? "#5D35BC" : "#D4C3F6"),
+                    Width = vertical ? 2 : Double.NaN, Height = vertical ? Double.NaN : 2,
+                    HorizontalAlignment = vertical ? HorizontalAlignment.Center : HorizontalAlignment.Stretch,
+                    VerticalAlignment = vertical ? VerticalAlignment.Stretch : VerticalAlignment.Center
+                };
+                if (vertical) Grid.SetRow(stroke, i);
+                else Grid.SetColumn(stroke, i);
+                rail.Children.Add(stroke);
+            }
+            var head = new Path {
+                Data = Geometry.Parse(vertical ? "M 0,8 L 5,0 L 10,8 Z" : "M 0,0 L 8,5 L 0,10 Z"),
+                Fill = Ui.Color("#5D35BC"),
+                HorizontalAlignment = vertical ? HorizontalAlignment.Center : HorizontalAlignment.Right,
+                VerticalAlignment = vertical ? VerticalAlignment.Top : VerticalAlignment.Center
+            };
+            if (!vertical) Grid.SetColumn(head, 1);
+            rail.Children.Add(head);
+            return rail;
         }
 
         private Button QuadrantFilter(TaskQuadrant quadrant, WorkItem[] pending)
@@ -280,7 +312,6 @@ namespace WorkDesk
             tile.Children.Add(labels);
             button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
             button.Padding = new Thickness(14, 11, 14, 11);
-            button.Margin = new Thickness(6, 0, 0, 6);
             button.Content = tile;
             return button;
         }

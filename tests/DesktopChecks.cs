@@ -634,13 +634,28 @@ namespace WorkDesk
                 "Focus row actions share one horizontal group with Edit.");
             Click(Find<Button>(page, "上移：补充验收清单"));
             Check(store.Load().FocusItems(today).First().Title == "补充验收清单", "Focus order is saved when moved.");
-            Find<CheckBox>(page, "标记完成：补充验收清单").IsChecked = true;
-            Check(store.Load().FocusItems(today).First().CompletedUtc.HasValue, "Completed focus tasks remain visible today.");
+            var completion = Find<CheckBox>(page, "标记完成：补充验收清单");
+            completion.ApplyTemplate();
+            var mark = (UIElement)completion.Template.FindName("Check", completion);
+            Check(completion.Focusable && completion.IsTabStop && mark.Visibility == Visibility.Collapsed,
+                "The task checkbox has an unchecked appearance and remains keyboard-focusable.");
+            completion.IsChecked = true;
+            var completed = Find<CheckBox>(page, "恢复待办：补充验收清单");
+            completed.ApplyTemplate();
+            Check(((UIElement)completed.Template.FindName("Check", completed)).Visibility == Visibility.Visible &&
+                store.Load().FocusItems(today).First().CompletedUtc.HasValue,
+                "The custom checkmark reflects persisted completion and the focused task stays visible.");
             Click(Find<Button>(page, "移出重点：评审反馈"));
             Click(Descendants<Button>(page).Single(button => button.Content as string == "四象限"));
             Check(Grid.GetColumn(Find<Button>(page, "重要且紧急")) > Grid.GetColumn(Find<Button>(page, "重要不紧急")) &&
                 Grid.GetRow(Find<Button>(page, "重要且紧急")) < Grid.GetRow(Find<Button>(page, "紧急不重要")),
                 "The matrix increases urgency to the right and importance upward.");
+            var importance = Find<Grid>(page, "重要程度，向上越高");
+            var urgency = Find<Grid>(page, "紧急程度，向右越高");
+            Check(Grid.GetColumn(importance) == 1 && Grid.GetRow(urgency) == 2 &&
+                importance.Children.OfType<System.Windows.Shapes.Path>().Single().Fill != null &&
+                urgency.Children.OfType<System.Windows.Shapes.Path>().Single().Fill != null,
+                "The two filled arrowheads sit on the center axes and their directions are accessible.");
             Check(Find<Button>(page, "编辑事项：下周安排").Parent == Find<ComboBox>(page, "分类：下周安排").Parent,
                 "Quadrant assignment shares the task row with Edit.");
             Find<ComboBox>(page, "分类：下周安排").SelectedIndex = (int)TaskQuadrant.Schedule;
