@@ -296,8 +296,9 @@ namespace WorkDesk
 
         private void Delete(object sender, RoutedEventArgs e)
         {
-            if (MessageBox.Show(this, "删除后将从事项清单中移除。", "删除事项", MessageBoxButton.YesNo,
-                MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+            var prompt = new DeskPrompt(this, "删除事项？", "「" + original.Title + "」将从事项清单移除，删除后无法在工笺内撤销。",
+                confirm: "删除事项");
+            if (prompt.ShowDialog() != true) return;
             if (persist(null)) DialogResult = true;
             else error.Text = "删除未保存。请检查数据文件的访问权限和磁盘空间后重试。";
         }

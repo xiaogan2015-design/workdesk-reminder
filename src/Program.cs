@@ -55,8 +55,7 @@ namespace WorkDesk
             }
             catch (Exception ex)
             {
-                MessageBox.Show("工笺无法启动。\n\n" + ex.Message + "\n\n数据文件：" + store.FilePath,
-                    "工笺", MessageBoxButton.OK, MessageBoxImage.Error);
+                new DeskPrompt(null, "工笺无法启动", "请检查下方错误详情。", ex.Message + "\n\n数据文件：" + store.FilePath).ShowDialog();
                 return 1;
             }
         }

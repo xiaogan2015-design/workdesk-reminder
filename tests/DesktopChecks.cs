@@ -105,10 +105,44 @@ namespace WorkDesk
             var reopened = new MainWindow(store, store.Load());
             reopened.Show();
             Check(reopened.Element<TextBlock>("PendingCount").Text == "1", "Opening a fresh window loads the saved pending state.");
+            WithEditor(reopened.Element<Button>("NewTask"), editor => {
+                Find<TextBox>(editor, "事项标题").Text = "临时事项";
+                Click(Descendants<Button>(editor).Single(b => (string)b.Content == "保存事项"));
+            });
+            CheckDeletePrompt(reopened, store, false);
+            Check(reopened.State.Tasks.Count == 2 && store.Load().Tasks.Count == 2, "Canceling the delete prompt preserves the task.");
+            CheckDeletePrompt(reopened, store, true);
+            Check(reopened.State.Tasks.Single().Title == "核对计划" && store.Load().Tasks.Single().Title == "核对计划",
+                "Explicit confirmation deletes only the selected task and saves the change.");
             reopened.Close();
 
             CheckSummariesAndReminders(store);
             CheckTaskShortcutsAndScrolling(store);
+        }
+
+        private static void CheckDeletePrompt(MainWindow window, StateStore store, bool confirm)
+        {
+            var rows = window.Element<StackPanel>("TaskRows");
+            WithEditor(Find<Button>(rows, "编辑事项：临时事项"), editor => {
+                Exception failure = null;
+                editor.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(delegate {
+                    var prompt = Application.Current.Windows.OfType<DeskPrompt>().SingleOrDefault();
+                    try
+                    {
+                        Check(prompt != null && prompt.Owner == editor && prompt.WindowStyle == WindowStyle.None &&
+                            Descendants<TextBlock>(prompt).Any(block => block.Text.Contains("临时事项")),
+                            "Deletion uses an owned, themed prompt naming the task.");
+                        var cancel = Descendants<Button>(prompt).Single(button => button.Content as string == "取消");
+                        Check(cancel.IsCancel && cancel.IsDefault && store.Load().Tasks.Count == 2, "Deletion defaults to cancel and waits for confirmation.");
+                        Click(confirm ? Descendants<Button>(prompt).Single(button => button.Content as string == "删除事项") : cancel);
+                    }
+                    catch (Exception ex) { failure = ex; }
+                    finally { if (prompt != null && prompt.IsVisible) prompt.Close(); }
+                }));
+                Click(Descendants<Button>(editor).Single(button => button.Content as string == "删除事项"));
+                if (failure != null) throw new InvalidOperationException("Delete prompt check failed.", failure);
+                Check(editor.IsVisible != confirm, "Cancel leaves the editor open and confirming closes it.");
+            });
         }
 
         private static void CheckSummariesAndReminders(StateStore store)

@@ -98,8 +98,7 @@ namespace WorkDesk
                 var message = "保存失败。请检查数据文件的访问权限和磁盘空间。";
                 Banner(message);
                 if (!background)
-                    MessageBox.Show(this, message + "\n\n" + ex.Message + "\n" + store.FilePath,
-                        "无法保存", MessageBoxButton.OK, MessageBoxImage.Error);
+                    new DeskPrompt(this, "无法保存", message, ex.Message + "\n" + store.FilePath).ShowDialog();
                 return false;
             }
         }
