@@ -27,6 +27,7 @@
 ## 编辑器、图片与导出
 
 - [SummaryEditor.cs](./src/SummaryEditor.cs) 在 `RichTextBox` 中插入图片，正文保存 `workdesk-image:<id>` 标记。`Images` 关联 PNG 文件，完整 JSON 备份内嵌 PNG。`ReadMarkdown` 读取当前正文及其中实际使用的图片。改编辑器时验证光标处粘贴、删除和撤销图片、保存后重开历史记录。
+- 清空已保存的总结并保存时，删除该日报或周报的记录，刷新日历、历史和勾选导出。验证只含图片的总结仍能保存，也验证清除当天日报后重开时保持空白，避免完成事项自动填充造成旧记录仍在的错觉。
 - 缩略图呈白块时先查像素。部分 Windows 截图的 RGB 有内容，Alpha 却全为零。[SummaryImageCodec.cs](./src/SummaryImageCodec.cs) 在缩放前修复匹配这一特征的截图。旧附件加载时也尝试修复。混合透明度应保留，回归测试应检查 PNG 的像素和透明度。
 - [MarkdownExport.cs](./src/MarkdownExport.cs) 负责转换与写出。「复制 Markdown」和「导出当前篇」取当前编辑内容，可以包含未保存的修改。「勾选导出」由 [SummaryExportDialog.cs](./src/SummaryExportDialog.cs) 选择已保存的日报或周报。
 - Markdown 文件和剪贴板 Markdown 都使用 `data:image/png;base64,` 内嵌 PNG，复制后无需原目录。部分 Markdown 阅读器会限制 `data:` 图片。单文件 HTML 可在浏览器离线查看，正文按文本转义后显示。ZIP 内的 Markdown 通过相对路径引用同包 PNG，完整解压后可用。

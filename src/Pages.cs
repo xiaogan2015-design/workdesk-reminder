@@ -330,7 +330,8 @@ namespace WorkDesk
             var prior = state.FindSummary(summaryDate, summaryWeekly);
             summaryInput = new SummaryEditor(prior, Banner) { Style = Ui.Style("SummarySurface") };
             savedSummary = summaryInput.ReadMarkdown();
-            if (!summaryWeekly && summaryDate == DateTime.Today && String.IsNullOrWhiteSpace(savedSummary))
+            if (!summaryWeekly && summaryDate == DateTime.Today && String.IsNullOrWhiteSpace(savedSummary) &&
+                state.DailyClearedOn != WorkState.PeriodKey(summaryDate, false))
             {
                 var completed = MarkdownExport.CompletedItems(state.Tasks, summaryDate);
                 if (completed.Length > 0)
@@ -422,13 +423,19 @@ namespace WorkDesk
         {
             var images = new List<SummaryImage>();
             string value = summaryInput.ReadMarkdown(images);
-            if (String.IsNullOrWhiteSpace(value)) { Banner("请先填写总结正文或粘贴图片。"); summaryInput.Focus(); return false; }
+            bool clear = String.IsNullOrWhiteSpace(value);
+            if (clear && state.FindSummary(summaryDate, summaryWeekly) == null)
+            {
+                Banner("请先填写总结正文或粘贴图片。");
+                summaryInput.Focus();
+                return false;
+            }
             if (value.Length > 40000) { Banner("总结正文最多可保存 40000 个字符。"); return false; }
             var next = state.Copy();
             next.SetSummary(summaryDate, summaryWeekly, value, DateTime.UtcNow, images);
             if (!Commit(next)) return false;
             savedSummary = value;
-            Banner(summaryWeekly ? "周报已保存。" : "日报已保存。");
+            Banner((summaryWeekly ? "周报" : "日报") + (clear ? "已清除。" : "已保存。"));
             RefreshHistory();
             return true;
         }

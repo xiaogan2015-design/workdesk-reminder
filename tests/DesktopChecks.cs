@@ -164,6 +164,8 @@ namespace WorkDesk
             state.Tasks.Add(new WorkItem { Title = "昨天完成", CompletedUtc = today.AddDays(-1).AddHours(9).ToUniversalTime() });
             state.Tasks.Add(new WorkItem { Title = "当天截止但未完成", DueUtc = today.AddHours(16).ToUniversalTime() });
             state.Tasks.Add(new WorkItem { Title = "稍后完成", CompletedUtc = today.AddHours(10).ToUniversalTime() });
+            var otherDay = today.AddDays(-2);
+            state.SetSummary(otherDay, false, "保留这份日报", DateTime.UtcNow);
             store.Save(state);
 
             var window = new MainWindow(store, store.Load());
@@ -192,9 +194,39 @@ namespace WorkDesk
             Click(Descendants<Button>(window).Single(button => button.Content as string == "保存总结"));
             window.OpenSummary(today, true);
             window.OpenSummary(today, false);
-            Check(SummaryImage.Reference.IsMatch(imageOnly) && Find<SummaryEditor>(window, "总结正文").ReadMarkdown() == imageOnly,
+            editor = Find<SummaryEditor>(window, "总结正文");
+            Check(SummaryImage.Reference.IsMatch(imageOnly) && editor.ReadMarkdown() == imageOnly,
                 "A report containing only an image is not considered blank.");
+            var savedButtons = Descendants<Button>(window).ToArray();
+            var period = WorkState.PeriodKey(today, false);
+            Check(savedButtons.Any(button => button.Content as string == period) &&
+                savedButtons.Any(button => AutomationProperties.GetName(button) == "打开日报 " + period),
+                "The saved report appears in both history and the calendar.");
+            SetBody(editor, " \n ");
+            Click(Descendants<Button>(window).Single(button => button.Content as string == "保存总结"));
+            var cleared = store.Load();
+            Check(!window.HasUnsavedSummary && cleared.FindSummary(today, false) == null &&
+                cleared.Summaries.Count == 1 && cleared.FindSummary(otherDay, false).Text == "保留这份日报",
+                "Saving a cleared editor removes only its report from the persisted export collection.");
+            Check(!Descendants<Button>(window).Any(button => button.Content as string == period ||
+                AutomationProperties.GetName(button) == "打开日报 " + period),
+                "Saving the deletion refreshes the history and the highlighted calendar day.");
             window.Close();
+
+            var reloaded = new MainWindow(store, store.Load());
+            reloaded.Show();
+            reloaded.OpenSummary(today, false);
+            Check(Find<SummaryEditor>(reloaded, "总结正文").ReadMarkdown() == "" && !reloaded.HasUnsavedSummary,
+                "A cleared daily report stays blank after restart even when there are completed tasks today.");
+            reloaded.OpenSummary(today, true);
+            var weekly = Find<SummaryEditor>(reloaded, "总结正文");
+            SetBody(weekly, "本周要清除的记录");
+            Click(Descendants<Button>(reloaded).Single(button => button.Content as string == "保存总结"));
+            SetBody(weekly, "");
+            RespondToSummaryDialog(reloaded, delegate { Click(reloaded.Element<Button>("DeskNav")); }, "保存并离开");
+            Check(store.Load().FindSummary(today, true) == null &&
+                reloaded.Element<TextBlock>("PageTitle").Text == "工作台", "Save and leave also clears a blank weekly report.");
+            reloaded.Close();
         }
 
         private static void CheckDeletePrompt(MainWindow window, StateStore store, bool confirm)

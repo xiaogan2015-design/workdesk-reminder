@@ -239,6 +239,7 @@ namespace WorkDesk
         [DataMember(EmitDefaultValue = false)] internal List<ArchiveMonth> ArchiveMonths;
         [DataMember] public string LastDailyReminder;
         [DataMember] public string LastWeeklyReminder;
+        [DataMember(EmitDefaultValue = false)] public string DailyClearedOn;
         [DataMember(EmitDefaultValue = false)] private string FocusDate;
         [DataMember(EmitDefaultValue = false)] private string[] FocusIds;
         [DataMember(EmitDefaultValue = false)] private string DailyChecklistDate;
@@ -294,6 +295,12 @@ namespace WorkDesk
         {
             var summary = FindSummary(date, weekly);
             if (summary != null) Summaries.Remove(summary);
+            if (String.IsNullOrWhiteSpace(text))
+            {
+                if (summary != null && !weekly && date.Date == updatedUtc.ToLocalTime().Date)
+                    DailyClearedOn = summary.Period;
+                return;
+            }
             Summaries.Add(new WorkSummary {
                 Period = PeriodKey(date, weekly), Weekly = weekly, Text = text, UpdatedUtc = updatedUtc,
                 Images = images != null && images.Count != 0 ? new List<SummaryImage>(images) : null
