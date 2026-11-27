@@ -14,6 +14,7 @@
                     </StackPanel>
                 </StackPanel>
                 <Button x:Name="DeskNav" Style="{StaticResource ActiveNav}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE80F;" FontFamily="Segoe MDL2 Assets" Foreground="White" Margin="0,0,11,0" VerticalAlignment="Center"/><TextBlock Text="工作台" Foreground="White"/></StackPanel></Button>
+                <Button x:Name="ArchiveNav" Style="{StaticResource Nav}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE7B8;" FontFamily="Segoe MDL2 Assets" Foreground="#D9CFF1" Margin="0,0,11,0" VerticalAlignment="Center"/><TextBlock Text="事项归档" Foreground="#E7DEF7"/></StackPanel></Button>
                 <Button x:Name="SummaryNav" Style="{StaticResource Nav}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE70B;" FontFamily="Segoe MDL2 Assets" Foreground="#D9CFF1" Margin="0,0,11,0" VerticalAlignment="Center"/><TextBlock Text="工作总结" Foreground="#E7DEF7"/></StackPanel></Button>
                 <Button x:Name="SettingsNav" Style="{StaticResource Nav}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" Foreground="#D9CFF1" Margin="0,0,11,0" VerticalAlignment="Center"/><TextBlock Text="提醒设置" Foreground="#E7DEF7"/></StackPanel></Button>
             </StackPanel>
@@ -91,7 +92,7 @@
                             <StackPanel>
                                 <DockPanel Margin="0,0,0,12">
                                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                                        <Button x:Name="CopyPlan" Content="复制清单" Padding="9,5" Margin="0,0,6,0" ToolTip="复制全部待办和已完成事项为 Markdown" />
+                                        <Button x:Name="CopyPlan" Content="复制清单" Padding="9,5" Margin="0,0,6,0" ToolTip="复制全部事项（含已归档）为 Markdown" />
                                         <Button x:Name="ExportPlan" Content="导出清单" Padding="9,5" ToolTip="将全部事项导出为 Markdown 文件" />
                                     </StackPanel>
                                     <TextBlock Text="事项清单" Style="{StaticResource SectionTitle}" VerticalAlignment="Center" />

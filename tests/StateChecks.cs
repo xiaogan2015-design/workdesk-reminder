@@ -105,10 +105,13 @@ internal static class StateChecks
         {
             Check(store.Load().Tasks.Count == 0, "Fresh installation");
             notified.Appearance = null;
+            notified.Archiving = null;
             store.Save(notified);
             var loaded = new StateStore(folder).Load();
             Check(loaded.Appearance.InterfaceSize == 14 && loaded.Appearance.EditorSize == 14 && loaded.Appearance.InterfaceFont == null,
                 "Legacy settings without typography use the existing defaults.");
+            Check(loaded.Archiving.CompletedDays == 0 && loaded.Archiving.OverdueDays == 0 && loaded.Tasks.All(t => !t.ArchivedUtc.HasValue),
+                "Legacy files keep both archive rules disabled and their tasks active.");
             Check(loaded.Tasks.Any(t => t.Title == upcoming.Title) && !loaded.CollectReminders(now).Daily, "Round-trip Chinese text and reminder deduplication");
             Check(loaded.Tasks.Single(t => t.Id == upcoming.Id).DueUtc == item.DueUtc, "Round-trip UTC timestamps");
             store.Save(state);
@@ -193,6 +196,7 @@ internal static class StateChecks
             }
             try { MarkdownExport.Write(store, store.FilePath, archive); throw new Exception("The live file cannot be exported over."); }
             catch (IOException) { Check(store.Load().Tasks.Count == 3, "Export cannot replace the live state file"); }
+            CheckTaskArchiving(store, backup, now);
         }
         finally
         {
@@ -210,6 +214,53 @@ internal static class StateChecks
             if (Directory.Exists(folder)) Directory.Delete(folder);
         }
         Console.WriteLine("Passed {0} state and reminder checks.", assertions);
+    }
+
+    private static void CheckTaskArchiving(StateStore store, StateStore backup, DateTimeOffset now)
+    {
+        var utc = now.UtcDateTime;
+        var done = new WorkItem { Title = "已完成的归档事项", CompletedUtc = utc.AddDays(-7), DueUtc = utc.AddDays(-50) };
+        var overdue = new WorkItem { Title = "已逾期的归档事项", DueUtc = utc.AddDays(-30), Notes = "保留这份备注" };
+        var recent = new WorkItem { Title = "近期完成", CompletedUtc = utc.AddDays(-2), DueUtc = utc.AddDays(-50) };
+        var noDeadline = new WorkItem { Title = "无截止时间" };
+        var state = new WorkState();
+        state.Tasks.AddRange(new[] { done, overdue, recent, noDeadline });
+        state.ArchiveAgedTasks(utc);
+        Check(state.Tasks.All(t => !t.ArchivedUtc.HasValue), "Automatic archiving is off by default.");
+
+        state.Archiving = new ArchiveSettings { CompletedDays = 7 };
+        state.ArchiveAgedTasks(utc.AddTicks(-1));
+        Check(state.Tasks.All(t => !t.ArchivedUtc.HasValue), "Archiving waits until the exact threshold.");
+        state.ArchiveAgedTasks(utc);
+        Check(state.FilterTasks(TaskFilter.Archived, now).Single() == done, "The completed rule works independently of the overdue rule.");
+        state.Archiving.OverdueDays = 30;
+        state.ArchiveAgedTasks(utc.AddSeconds(1));
+        Check(state.FilterTasks(TaskFilter.Archived, now).SequenceEqual(new[] { overdue, done }), "Archive is newest first.");
+        Check(state.FilterTasks(TaskFilter.Pending, now).Single() == noDeadline &&
+            state.FilterTasks(TaskFilter.Completed, now).Single() == recent && !state.FilterTasks(TaskFilter.Overdue, now).Any(),
+            "Archived tasks leave the active lists and a completed task uses its completion date, regardless of its old deadline.");
+        Check(state.CollectReminders(now).Tasks.Length == 0, "An archived overdue task stops generating reminders.");
+        string export = MarkdownExport.Plan(state, now);
+        Check(export.Contains("## 已归档\n\n- [ ] 已逾期的归档事项") && export.Contains("- [x] 已完成的归档事项") &&
+            export.Contains("归档时间：") && MarkdownExport.Archive(state, now).Contains("### 已归档"), "Both Markdown exports keep archived items and their statuses.");
+
+        done.RestoreFromArchive();
+        done.SetSchedule(done.DueUtc, 45);
+        state.ArchiveAgedTasks(utc.AddMinutes(1));
+        Check(!done.ArchivedUtc.HasValue && done.CompletedUtc == utc.AddDays(-7), "Restoring preserves completion and a lead-only edit does not re-arm archiving.");
+        store.Save(state);
+        store.BackUp(backup.FilePath, state);
+        foreach (var loaded in new[] { store.Load(), backup.Load() })
+        {
+            var archived = loaded.FilterTasks(TaskFilter.Archived, now).Single();
+            var restored = loaded.Tasks.Single(t => t.Id == done.Id);
+            Check(archived.ArchivedUtc == overdue.ArchivedUtc && archived.Notes == overdue.Notes &&
+                restored.AutoArchivePaused && loaded.Archiving.CompletedDays == 7 && loaded.Archiving.OverdueDays == 30,
+                "Saved files preserve archive timestamps, rules, and restored-task exceptions.");
+        }
+        done.SetCompletion(utc.AddDays(-8));
+        state.ArchiveAgedTasks(utc.AddMinutes(1));
+        Check(done.ArchivedUtc.HasValue, "A changed completion time re-arms archiving for a restored task.");
     }
 
     private static byte[] RgbAndAlpha(SummaryImage image)

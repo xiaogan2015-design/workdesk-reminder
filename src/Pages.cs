@@ -15,9 +15,12 @@ namespace WorkDesk
     {
         private const string ReportFormats = "Markdown（内嵌图片） (*.md)|*.md|网页（内嵌图片） (*.html)|*.html|Markdown 和图片压缩包 (*.zip)|*.zip";
         private const string DefaultFontChoice = "系统默认字体";
-        private enum DeskPage { Desk, Summary, Settings }
+        private enum DeskPage { Desk, Archive, Summary, Settings }
         private static readonly string[] Weekdays = { "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六" };
         private DeskPage page;
+        private StackPanel archiveRows;
+        private TextBlock archiveCount;
+        private Border archiveSettingsCard;
         private DateTime summaryDate;
         private DateTime summaryAnchor;
         private bool summaryWeekly;
@@ -37,12 +40,15 @@ namespace WorkDesk
         private void InitializePages()
         {
             var desk = Element<Button>("DeskNav");
+            var archive = Element<Button>("ArchiveNav");
             var summary = Element<Button>("SummaryNav");
             var settings = Element<Button>("SettingsNav");
             AutomationProperties.SetName(desk, "工作台");
+            AutomationProperties.SetName(archive, "事项归档");
             AutomationProperties.SetName(summary, "工作总结");
             AutomationProperties.SetName(settings, "提醒设置");
             desk.Click += delegate { OpenWorkbench(false); };
+            archive.Click += delegate { OpenArchive(); };
             summary.Click += delegate { if (page != DeskPage.Summary) OpenSummary(DateTime.Today, false); };
             settings.Click += delegate { OpenSettings(); };
             Element<Button>("TodaySummary").Click += delegate { OpenSummary(DateTime.Today, false); };
@@ -119,10 +125,49 @@ namespace WorkDesk
             return true;
         }
 
-        private void OpenSettings()
+        private void OpenArchive()
+        {
+            if (page == DeskPage.Archive || !CanLeaveSummary()) return;
+            var content = new StackPanel();
+            var header = new DockPanel { Margin = new Thickness(0, 0, 0, 13) };
+            var settings = Ui.Button("归档设置", delegate { OpenSettings(true); });
+            DockPanel.SetDock(settings, Dock.Right);
+            header.Children.Add(settings);
+            archiveCount = Ui.Text("", "SectionTitle");
+            archiveCount.VerticalAlignment = VerticalAlignment.Center;
+            header.Children.Add(archiveCount);
+            content.Children.Add(header);
+            archiveRows = new StackPanel();
+            content.Children.Add(archiveRows);
+            RefreshArchivedTasks();
+            SetPage(DeskPage.Archive, "事项归档", Ui.Card(content));
+        }
+
+        private void RefreshArchivedTasks()
+        {
+            var now = DateTimeOffset.Now;
+            var items = state.FilterTasks(TaskFilter.Archived, now).ToArray();
+            archiveCount.Text = "已归档 · " + items.Length.ToString(Chinese) + " 项";
+            archiveRows.Children.Clear();
+            if (items.Length == 0) archiveRows.Children.Add(Ui.Text("暂无归档事项。可在归档设置中启用自动归档。", "Hint"));
+            foreach (var item in items) archiveRows.Children.Add(TaskRow(item, now));
+        }
+
+        internal void RefreshTaskViews()
+        {
+            if (page == DeskPage.Archive) RefreshArchivedTasks();
+            if (page == DeskPage.Desk) RefreshDashboard();
+        }
+
+        private void OpenSettings(bool showArchiveSettings = false)
         {
             if (page == DeskPage.Settings || !CanLeaveSummary()) return;
             SetPage(DeskPage.Settings, "提醒设置", BuildSettingsPage());
+            if (showArchiveSettings)
+            {
+                UpdateLayout();
+                archiveSettingsCard.BringIntoView();
+            }
         }
 
         private void SetPage(DeskPage next, string title, UIElement content)
@@ -131,6 +176,7 @@ namespace WorkDesk
             page = next;
             Element<TextBlock>("PageTitle").Text = title;
             Element<Button>("DeskNav").Style = Ui.Style(next == DeskPage.Desk ? "ActiveNav" : "Nav");
+            Element<Button>("ArchiveNav").Style = Ui.Style(next == DeskPage.Archive ? "ActiveNav" : "Nav");
             Element<Button>("SummaryNav").Style = Ui.Style(next == DeskPage.Summary ? "ActiveNav" : "Nav");
             Element<Button>("SettingsNav").Style = Ui.Style(next == DeskPage.Settings ? "ActiveNav" : "Nav");
             Element<StackPanel>("Dashboard").Visibility = next == DeskPage.Desk ? Visibility.Visible : Visibility.Collapsed;
@@ -352,6 +398,9 @@ namespace WorkDesk
         {
             var panels = new StackPanel { HorizontalAlignment = HorizontalAlignment.Stretch };
             panels.Children.Add(BuildAppearanceCard());
+            archiveSettingsCard = BuildArchiveSettingsCard();
+            archiveSettingsCard.Margin = new Thickness(0, 12, 0, 0);
+            panels.Children.Add(archiveSettingsCard);
             var schedules = new StackPanel();
             schedules.Children.Add(Ui.Text("总结提醒", "SectionTitle"));
             var settings = state.Settings;
@@ -432,6 +481,47 @@ namespace WorkDesk
             backupCard.Margin = new Thickness(0, 12, 0, 0);
             panels.Children.Add(backupCard);
             return panels;
+        }
+
+        private Border BuildArchiveSettingsCard()
+        {
+            var content = new StackPanel();
+            content.Children.Add(Ui.Text("事项自动归档", "SectionTitle"));
+            var hint = Ui.Text("分别设置保留天数。0 表示关闭，1 天按 24 小时计算。归档后可在「事项归档」中查看或恢复。", "Hint");
+            hint.Margin = new Thickness(0, 5, 0, 0);
+            content.Children.Add(hint);
+
+            var completed = new TextBox { Text = state.Archiving.CompletedDays.ToString(CultureInfo.InvariantCulture), Width = 82, MaxLength = 4,
+                HorizontalAlignment = HorizontalAlignment.Left };
+            var overdue = new TextBox { Text = state.Archiving.OverdueDays.ToString(CultureInfo.InvariantCulture), Width = 82, MaxLength = 4,
+                HorizontalAlignment = HorizontalAlignment.Left };
+            var completedField = new StackPanel { Margin = new Thickness(0, 0, 26, 0) };
+            Ui.Label(completedField, "完成后归档（天）", completed);
+            var overdueField = new StackPanel();
+            Ui.Label(overdueField, "逾期后归档（天）", overdue);
+            var fields = new WrapPanel();
+            fields.Children.Add(completedField);
+            fields.Children.Add(overdueField);
+            content.Children.Add(Ui.FormGroup(fields));
+
+            var save = Ui.Button("保存归档设置", delegate {
+                int completedDays, overdueDays;
+                if (!Int32.TryParse(completed.Text.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out completedDays) ||
+                    !Int32.TryParse(overdue.Text.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out overdueDays) ||
+                    !ArchiveSettings.IsValidDayCount(completedDays) || !ArchiveSettings.IsValidDayCount(overdueDays))
+                {
+                    Banner("请输入 0 到 " + ArchiveSettings.MaxDays + " 之间的整数天数。");
+                    return;
+                }
+                var next = state.Copy();
+                next.Archiving = new ArchiveSettings { CompletedDays = completedDays, OverdueDays = overdueDays };
+                next.ArchiveAgedTasks(DateTime.UtcNow);
+                if (Commit(next)) Banner("归档设置已保存，符合条件的事项已移至「事项归档」。");
+            }, "Primary");
+            save.HorizontalAlignment = HorizontalAlignment.Left;
+            save.Margin = new Thickness(0, 13, 0, 0);
+            content.Children.Add(save);
+            return Ui.Card(content);
         }
 
         private Border BuildAppearanceCard()

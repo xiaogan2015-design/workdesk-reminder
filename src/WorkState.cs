@@ -20,11 +20,14 @@ namespace WorkDesk
         [DataMember] public int LeadMinutes = 30;
         [DataMember] public DateTime? CompletedUtc;
         [DataMember] public bool ReminderShown;
+        [DataMember(EmitDefaultValue = false)] public DateTime? ArchivedUtc;
+        [DataMember(EmitDefaultValue = false)] public bool AutoArchivePaused;
 
         public WorkItem Copy() { return (WorkItem)MemberwiseClone(); }
 
         public void SetSchedule(DateTime? dueUtc, int leadMinutes)
         {
+            if (DueUtc != dueUtc) AutoArchivePaused = false;
             if (DueUtc != dueUtc || LeadMinutes != leadMinutes) ReminderShown = false;
             DueUtc = dueUtc;
             LeadMinutes = leadMinutes;
@@ -32,6 +35,7 @@ namespace WorkDesk
 
         public void SetCompletion(DateTime? completedUtc)
         {
+            if (CompletedUtc != completedUtc) AutoArchivePaused = false;
             if (CompletedUtc.HasValue && !completedUtc.HasValue) ReminderShown = false;
             CompletedUtc = completedUtc;
         }
@@ -43,7 +47,13 @@ namespace WorkDesk
 
         public bool ShouldRemind(DateTime nowUtc)
         {
-            return !CompletedUtc.HasValue && !ReminderShown && WithinReminderWindow(nowUtc);
+            return !ArchivedUtc.HasValue && !CompletedUtc.HasValue && !ReminderShown && WithinReminderWindow(nowUtc);
+        }
+
+        public void RestoreFromArchive()
+        {
+            ArchivedUtc = null;
+            AutoArchivePaused = true;
         }
 
         public bool WithinReminderWindow(DateTime nowUtc)
@@ -108,6 +118,25 @@ namespace WorkDesk
     }
 
     [DataContract]
+    internal sealed class ArchiveSettings
+    {
+        public const int MaxDays = 3650;
+
+        [DataMember] public int CompletedDays;
+        [DataMember] public int OverdueDays;
+
+        public static bool IsValidDayCount(int days) { return days >= 0 && days <= MaxDays; }
+
+        public bool ShouldArchive(WorkItem item, DateTime utc)
+        {
+            if (item.ArchivedUtc.HasValue || item.AutoArchivePaused) return false;
+            var since = item.CompletedUtc ?? item.DueUtc;
+            int days = item.CompletedUtc.HasValue ? CompletedDays : OverdueDays;
+            return days > 0 && since.HasValue && utc - since.Value >= TimeSpan.FromDays(days);
+        }
+    }
+
+    [DataContract]
     internal sealed class AppearanceSettings
     {
         public const int MinSize = 12;
@@ -127,7 +156,7 @@ namespace WorkDesk
         }
     }
 
-    internal enum TaskFilter { Pending, Today, Overdue, Completed }
+    internal enum TaskFilter { Pending, Today, Overdue, Completed, Archived }
 
     internal sealed class ReminderBatch
     {
@@ -146,6 +175,7 @@ namespace WorkDesk
         [DataMember] public List<WorkSummary> Summaries = new List<WorkSummary>();
         [DataMember] public ReminderSettings Settings = new ReminderSettings();
         [DataMember] public AppearanceSettings Appearance = new AppearanceSettings();
+        [DataMember(EmitDefaultValue = false)] public ArchiveSettings Archiving = new ArchiveSettings();
         [DataMember] public string LastDailyReminder;
         [DataMember] public string LastWeeklyReminder;
 
@@ -177,14 +207,21 @@ namespace WorkDesk
 
         public IEnumerable<WorkItem> FilterTasks(TaskFilter filter, DateTimeOffset now)
         {
+            if (filter == TaskFilter.Archived) return Tasks.Where(t => t.ArchivedUtc.HasValue).OrderByDescending(t => t.ArchivedUtc);
+            var active = Tasks.Where(t => !t.ArchivedUtc.HasValue);
             if (filter == TaskFilter.Completed)
-                return Tasks.Where(t => t.CompletedUtc.HasValue).OrderByDescending(t => t.CompletedUtc);
-            var pending = Tasks.Where(t => !t.CompletedUtc.HasValue);
+                return active.Where(t => t.CompletedUtc.HasValue).OrderByDescending(t => t.CompletedUtc);
+            var pending = active.Where(t => !t.CompletedUtc.HasValue);
             if (filter == TaskFilter.Today)
                 pending = pending.Where(t => t.DueUtc.HasValue && t.DueUtc.Value.ToLocalTime().Date == now.Date);
             if (filter == TaskFilter.Overdue)
                 pending = pending.Where(t => t.IsOverdue(now.UtcDateTime));
             return pending.OrderBy(t => t.DueUtc ?? DateTime.MaxValue);
+        }
+
+        public void ArchiveAgedTasks(DateTime utc)
+        {
+            foreach (var item in Tasks.Where(t => Archiving.ShouldArchive(t, utc))) item.ArchivedUtc = utc;
         }
 
         public ReminderBatch CollectReminders(DateTimeOffset now)
@@ -227,6 +264,9 @@ namespace WorkDesk
 
             if (Appearance == null) Appearance = new AppearanceSettings();
             Appearance.Normalize();
+            if (Archiving == null) Archiving = new ArchiveSettings();
+            if (!ArchiveSettings.IsValidDayCount(Archiving.CompletedDays)) Archiving.CompletedDays = 0;
+            if (!ArchiveSettings.IsValidDayCount(Archiving.OverdueDays)) Archiving.OverdueDays = 0;
 
             var taskIds = new HashSet<string>();
             foreach (var item in Tasks)

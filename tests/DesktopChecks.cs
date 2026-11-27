@@ -118,6 +118,7 @@ namespace WorkDesk
 
             CheckSummariesAndReminders(store);
             CheckTaskShortcutsAndScrolling(store);
+            CheckTaskArchiving(store);
         }
 
         private static void CheckDeletePrompt(MainWindow window, StateStore store, bool confirm)
@@ -143,6 +144,61 @@ namespace WorkDesk
                 if (failure != null) throw new InvalidOperationException("Delete prompt check failed.", failure);
                 Check(editor.IsVisible != confirm, "Cancel leaves the editor open and confirming closes it.");
             });
+        }
+
+        private static void CheckTaskArchiving(StateStore store)
+        {
+            var now = DateTimeOffset.Now;
+            now = now.AddTicks(-(now.Ticks % TimeSpan.TicksPerSecond));
+            var state = new WorkState { Settings = new ReminderSettings { DailyEnabled = false } };
+            var oldDone = new WorkItem { Title = "旧已完成", CompletedUtc = now.UtcDateTime.AddDays(-8) };
+            var oldOverdue = new WorkItem { Title = "旧已逾期", DueUtc = now.UtcDateTime.AddDays(-31) };
+            var recentOverdue = new WorkItem { Title = "近期逾期", DueUtc = now.UtcDateTime.AddDays(-29) };
+            state.Tasks.AddRange(new[] { oldDone, oldOverdue, recentOverdue, new WorkItem { Title = "未设置截止" } });
+            store.Save(state);
+            var app = Application.Current;
+            var window = new MainWindow(store, store.Load());
+            using (var host = new DesktopHost(app, window))
+            {
+                window.Show();
+                Click(window.Element<Button>("ArchiveNav"));
+                var page = window.Element<ContentControl>("OtherPage");
+                Check(window.Element<TextBlock>("PageTitle").Text == "事项归档" &&
+                    Descendants<TextBlock>(page).Any(block => block.Text.StartsWith("暂无归档事项")), "The sidebar opens an unconfigured archive.");
+                Click(Descendants<Button>(page).Single(button => button.Content as string == "归档设置"));
+                var complete = Find<TextBox>(page, "完成后归档（天）");
+                var overdue = Find<TextBox>(page, "逾期后归档（天）");
+                var save = Descendants<Button>(page).Single(button => button.Content as string == "保存归档设置");
+                Check(complete.Text == "0" && overdue.Text == "0", "Both archived settings start disabled.");
+                complete.Text = "7";
+                overdue.Text = "4000";
+                Click(save);
+                Check(store.Load().Archiving.CompletedDays == 0 && store.Load().Tasks.All(item => !item.ArchivedUtc.HasValue),
+                    "An invalid threshold never changes settings or tasks.");
+                overdue.Text = "30";
+                Click(save);
+                Check(store.Load().FilterTasks(TaskFilter.Archived, now).Count() == 2, "Saving archive rules immediately groups existing matching tasks.");
+                Click(window.Element<Button>("DeskNav"));
+                Check(window.Element<TextBlock>("PendingCount").Text == "2" && window.Element<TextBlock>("OverdueCount").Text == "1",
+                    "The dashboard no longer counts archived tasks.");
+                Click(window.Element<Button>("ArchiveNav"));
+                Check(Descendants<TextBlock>(page).Any(block => block.Text.StartsWith("归档于 ")) &&
+                    !Descendants<CheckBox>(page).Any(), "Archive rows show their dates and keep completion read-only.");
+                Click(Find<Button>(page, "恢复归档事项：旧已完成"));
+                Check(store.Load().Tasks.Single(item => item.Id == oldDone.Id).CompletedUtc == oldDone.CompletedUtc,
+                    "Restoring from the archive preserves the original completion time.");
+                window.Close();
+                host.Tick(now.AddDays(2));
+                Check(!window.IsVisible && store.Load().FilterTasks(TaskFilter.Archived, now).Count() == 2 &&
+                    !app.Windows.OfType<ReminderPopup>().Any(), "The hidden window archives aged tasks, keeps a restored task, and skips archived reminders.");
+                window.ShowWorkspace();
+                Check(Find<Button>(page, "恢复归档事项：近期逾期") != null, "Background archiving updates the open archive page.");
+                Click(window.Element<Button>("DeskNav"));
+                Click(window.Element<Button>("CompletedShortcut"));
+                Check(Find<Button>(window.Element<StackPanel>("TaskRows"), "编辑事项：旧已完成") != null,
+                    "A restored completed task appears in the completed list.");
+            }
+            window.Close();
         }
 
         private static void CheckSummariesAndReminders(StateStore store)

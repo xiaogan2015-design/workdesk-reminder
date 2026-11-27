@@ -175,18 +175,21 @@ namespace WorkDesk
 
         private static void AppendPlan(StringBuilder output, WorkState state, DateTimeOffset now, string heading)
         {
-            foreach (var group in new[] { TaskFilter.Pending, TaskFilter.Completed })
+            foreach (var group in new[] { TaskFilter.Pending, TaskFilter.Completed, TaskFilter.Archived })
             {
-                bool completed = group == TaskFilter.Completed;
-                output.Append(heading).Append(completed ? " 已完成\n\n" : " 待处理\n\n");
                 var items = state.FilterTasks(group, now).ToArray();
+                if (group == TaskFilter.Archived && items.Length == 0) continue;
+                string label = group == TaskFilter.Archived ? "已归档" : group == TaskFilter.Completed ? "已完成" : "待处理";
+                output.Append(heading).Append(' ').Append(label).Append("\n\n");
                 foreach (var item in items)
                 {
-                    output.Append(completed ? "- [x] " : "- [ ] ").Append(Escape(Normalize(item.Title).Replace('\n', ' '))).Append('\n');
+                    output.Append(item.CompletedUtc.HasValue ? "- [x] " : "- [ ] ").Append(Escape(Normalize(item.Title).Replace('\n', ' '))).Append('\n');
                     if (item.DueUtc.HasValue)
                         output.Append("  - 截止时间：").Append(LocalTime(item.DueUtc.Value, "yyyy-MM-dd HH:mm")).Append('\n');
                     if (item.CompletedUtc.HasValue)
                         output.Append("  - 完成时间：").Append(LocalTime(item.CompletedUtc.Value, "yyyy-MM-dd HH:mm:ss")).Append('\n');
+                    if (item.ArchivedUtc.HasValue)
+                        output.Append("  - 归档时间：").Append(LocalTime(item.ArchivedUtc.Value, "yyyy-MM-dd HH:mm:ss")).Append('\n');
                     if (!String.IsNullOrWhiteSpace(item.Notes))
                     {
                         output.Append("  - 备注：");

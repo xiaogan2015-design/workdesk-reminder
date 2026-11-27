@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Automation;
@@ -102,25 +103,43 @@ namespace WorkDesk
         {
             if (exiting) return;
             window.RefreshClock(now);
-            var batch = window.State.CollectReminders(now);
-            if (!batch.Any) return;
-            var next = window.State.Copy();
-            next.MarkReminded(batch);
+            var current = window.State;
+            var rules = current.Archiving;
+            bool archiving = (rules.CompletedDays > 0 || rules.OverdueDays > 0) &&
+                current.Tasks.Any(item => rules.ShouldArchive(item, now.UtcDateTime));
+            var next = archiving ? current.Copy() : null;
+            if (archiving) next.ArchiveAgedTasks(now.UtcDateTime);
+            var batch = (next ?? current).CollectReminders(now);
+            if (!archiving && !batch.Any) return;
+            if (next == null) next = current.Copy();
+            if (batch.Any) next.MarkReminded(batch);
             if (!window.Commit(next, true)) return;
-            queue.Enqueue(batch);
-            ShowNext();
+            if (archiving) window.RefreshTaskViews();
+            if (batch.Any)
+            {
+                queue.Enqueue(batch);
+                ShowNext();
+            }
         }
 
         private void ShowNext()
         {
-            if (exiting || popup != null || queue.Count == 0) return;
-            var batch = queue.Dequeue();
-            popup = new ReminderPopup(batch, window.FontFamily, delegate(bool? weekly) {
-                window.ShowWorkspace();
-                return weekly.HasValue ? window.OpenSummary(batch.Day, weekly.Value) : window.OpenWorkbench(true);
-            });
-            popup.Closed += delegate { popup = null; ShowNext(); };
-            popup.Show();
+            while (!exiting && popup == null && queue.Count > 0)
+            {
+                var batch = queue.Dequeue();
+                if (batch.Tasks.Length > 0)
+                {
+                    var active = new HashSet<string>(window.State.Tasks.Where(t => !t.ArchivedUtc.HasValue).Select(t => t.Id));
+                    batch.Tasks = batch.Tasks.Where(t => active.Contains(t.Id)).ToArray();
+                }
+                if (!batch.Any) continue;
+                popup = new ReminderPopup(batch, window.FontFamily, delegate(bool? weekly) {
+                    window.ShowWorkspace();
+                    return weekly.HasValue ? window.OpenSummary(batch.Day, weekly.Value) : window.OpenWorkbench(true);
+                });
+                popup.Closed += delegate { popup = null; ShowNext(); };
+                popup.Show();
+            }
         }
 
         private void HideWindow(object sender, CancelEventArgs e)

@@ -106,9 +106,10 @@ namespace WorkDesk
         internal void RefreshDashboard()
         {
             var now = DateTimeOffset.Now;
-            int pending = state.Tasks.Count(t => !t.CompletedUtc.HasValue);
-            int overdue = state.Tasks.Count(t => t.IsOverdue(now.UtcDateTime));
-            int finished = state.Tasks.Count(t => t.CompletedUtc.HasValue && t.CompletedUtc.Value.ToLocalTime().Date == now.Date);
+            var active = state.Tasks.Where(t => !t.ArchivedUtc.HasValue);
+            int pending = active.Count(t => !t.CompletedUtc.HasValue);
+            int overdue = active.Count(t => t.IsOverdue(now.UtcDateTime));
+            int finished = active.Count(t => t.CompletedUtc.HasValue && t.CompletedUtc.Value.ToLocalTime().Date == now.Date);
             Element<TextBlock>("DateLabel").Text = now.ToString("M月d日 dddd", Chinese);
             Element<TextBlock>("PendingCount").Text = pending.ToString(Chinese);
             Element<TextBlock>("OverdueCount").Text = overdue.ToString(Chinese);
@@ -179,21 +180,25 @@ namespace WorkDesk
                 item.IsOverdue(now.UtcDateTime) ? StatusTone.Overdue :
                 item.WithinReminderWindow(now.UtcDateTime) ? StatusTone.Upcoming : StatusTone.Pending;
             var row = new DockPanel { LastChildFill = true };
-            var check = new CheckBox {
-                IsChecked = item.CompletedUtc.HasValue, VerticalAlignment = VerticalAlignment.Center,
-                Width = 23, MinHeight = 29, Margin = new Thickness(1, 0, 5, 0)
-            };
-            AutomationProperties.SetName(check, (item.CompletedUtc.HasValue ? "恢复待办：" : "标记完成：") + item.Title);
-            check.Checked += delegate { ToggleCompletion(item.Id, true); };
-            check.Unchecked += delegate { ToggleCompletion(item.Id, false); };
-            row.Children.Add(check);
+            bool archived = item.ArchivedUtc.HasValue;
+            if (!archived)
+            {
+                var check = new CheckBox {
+                    IsChecked = item.CompletedUtc.HasValue, VerticalAlignment = VerticalAlignment.Center,
+                    Width = 23, MinHeight = 29, Margin = new Thickness(1, 0, 5, 0)
+                };
+                AutomationProperties.SetName(check, (item.CompletedUtc.HasValue ? "恢复待办：" : "标记完成：") + item.Title);
+                check.Checked += delegate { ToggleCompletion(item.Id, true); };
+                check.Unchecked += delegate { ToggleCompletion(item.Id, false); };
+                row.Children.Add(check);
+            }
 
-            var edit = Ui.Button("编辑", delegate { EditTask(item.Id); });
-            edit.Margin = new Thickness(8, 0, 0, 0);
-            edit.VerticalAlignment = VerticalAlignment.Center;
-            AutomationProperties.SetName(edit, "编辑事项：" + item.Title);
-            DockPanel.SetDock(edit, Dock.Right);
-            row.Children.Add(edit);
+            var action = archived ? Ui.Button("恢复", delegate { RestoreTask(item.Id); }) : Ui.Button("编辑", delegate { EditTask(item.Id); });
+            action.Margin = new Thickness(8, 0, 0, 0);
+            action.VerticalAlignment = VerticalAlignment.Center;
+            AutomationProperties.SetName(action, (archived ? "恢复归档事项：" : "编辑事项：") + item.Title);
+            DockPanel.SetDock(action, Dock.Right);
+            row.Children.Add(action);
 
             var details = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             var title = Ui.Text(item.Title);
@@ -210,6 +215,13 @@ namespace WorkDesk
             var timing = Ui.Text(TaskCaption(item), "Hint");
             timing.VerticalAlignment = VerticalAlignment.Center;
             metadata.Children.Add(timing);
+            if (archived)
+            {
+                var when = Ui.Text("归档于 " + item.ArchivedUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm", Chinese), "Hint");
+                when.Margin = new Thickness(10, 0, 0, 0);
+                when.VerticalAlignment = VerticalAlignment.Center;
+                metadata.Children.Add(when);
+            }
             details.Children.Add(metadata);
             if (!String.IsNullOrWhiteSpace(item.Notes))
             {
@@ -246,6 +258,17 @@ namespace WorkDesk
             item.SetCompletion(completed ? (DateTime?)DateTime.UtcNow : null);
             if (Commit(next)) Banner(completed ? "已记录完成时间。" : "已恢复为待办。");
             RefreshDashboard();
+        }
+
+        private void RestoreTask(string id)
+        {
+            var next = state.Copy();
+            var item = next.Tasks.Find(t => t.Id == id && t.ArchivedUtc.HasValue);
+            if (item == null) return;
+            item.RestoreFromArchive();
+            if (!Commit(next)) return;
+            RefreshArchivedTasks();
+            Banner("事项已恢复到工作台。");
         }
 
         private void EditTask(string id)
