@@ -46,7 +46,7 @@ namespace WorkDesk
             AutomationProperties.SetName(desk, "工作台");
             AutomationProperties.SetName(archive, "事项归档");
             AutomationProperties.SetName(summary, "工作总结");
-            AutomationProperties.SetName(settings, "提醒设置");
+            AutomationProperties.SetName(settings, "设置");
             desk.Click += delegate { OpenWorkbench(false); };
             archive.Click += delegate { OpenArchive(); };
             summary.Click += delegate { if (page != DeskPage.Summary) OpenSummary(DateTime.Today, false); };
@@ -162,7 +162,7 @@ namespace WorkDesk
         private void OpenSettings(bool showArchiveSettings = false)
         {
             if (page == DeskPage.Settings || !CanLeaveSummary()) return;
-            SetPage(DeskPage.Settings, "提醒设置", BuildSettingsPage());
+            SetPage(DeskPage.Settings, "设置", BuildSettingsPage());
             if (showArchiveSettings)
             {
                 UpdateLayout();

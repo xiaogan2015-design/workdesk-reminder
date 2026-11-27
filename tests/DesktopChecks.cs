@@ -53,6 +53,9 @@ namespace WorkDesk
             window.UpdateLayout();
             Check(window.Title == "待办笔记 · WorkDesk" && Descendants<TextBlock>(window).Any(block => block.Text == "待办笔记"),
                 "The window title and sidebar show the current app name.");
+            var sidebar = window.Element<Border>("Sidebar");
+            Check(Descendants<Button>(sidebar).Select(AutomationProperties.GetName).SequenceEqual(new[] { "工作台", "工作总结", "事项归档", "设置" }),
+                "The sidebar places the archive immediately above Settings.");
             var add = window.Element<Button>("NewTask");
             var rows = window.Element<StackPanel>("TaskRows");
             Check(window.Element<TextBlock>("PendingCount").Text == "0", "An empty dashboard starts at zero.");
@@ -313,7 +316,7 @@ namespace WorkDesk
                 CheckExportDialog(window, store.Load().Summaries);
                 SetBody(reopened, "仅用于测试的未保存文本");
                 RespondToSummaryDialog(window, delegate { Click(window.Element<Button>("SettingsNav")); }, "不保存并离开");
-                Check(store.Load().FindSummary(DateTime.Today, false).Text == plain && window.Element<TextBlock>("PageTitle").Text == "提醒设置",
+                Check(store.Load().FindSummary(DateTime.Today, false).Text == plain && window.Element<TextBlock>("PageTitle").Text == "设置",
                     "Discard leaves the summary and keeps its saved version.");
                 window.UpdateLayout();
                 var weekday = Find<ComboBox>(window, "周报星期");
@@ -336,7 +339,7 @@ namespace WorkDesk
                 SetBody(draftToSave, "保存后离开");
                 RespondToSummaryDialog(window, delegate { Click(window.Element<Button>("SettingsNav")); }, "保存并离开");
                 Check(store.Load().FindSummary(DateTime.Today, false).Text == "保存后离开" &&
-                    window.Element<TextBlock>("PageTitle").Text == "提醒设置", "Save and leave commits the draft before opening the destination.");
+                    window.Element<TextBlock>("PageTitle").Text == "设置", "Save and leave commits the draft before opening the destination.");
             }
             window.Close();
         }
