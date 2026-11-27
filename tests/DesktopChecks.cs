@@ -125,6 +125,7 @@ namespace WorkDesk
             CheckTaskShortcutsAndScrolling(store);
             CheckTaskArchiving(store);
             CheckHelpPage(store);
+            CheckDailySummaryPrefill(store);
         }
 
         private static void CheckHelpPage(StateStore store)
@@ -151,6 +152,47 @@ namespace WorkDesk
             Click(Descendants<Button>(page).Single(button => (string)button.Content == "重置清单"));
             Check(store.Load().GetDailyChecklist(DateTime.Today).All(step => !step) &&
                 Descendants<TextBlock>(page).Any(block => block.Text == "0/6"), "Reset clears and saves today's checklist.");
+            window.Close();
+        }
+
+        private static void CheckDailySummaryPrefill(StateStore store)
+        {
+            var today = DateTime.Today;
+            var state = new WorkState();
+            state.Tasks.Add(new WorkItem { Title = "当天完成 [评审]", CompletedUtc = today.AddHours(9).ToUniversalTime() });
+            state.Tasks.Add(new WorkItem { Title = "昨天完成", CompletedUtc = today.AddDays(-1).AddHours(9).ToUniversalTime() });
+            state.Tasks.Add(new WorkItem { Title = "当天截止但未完成", DueUtc = today.AddHours(16).ToUniversalTime() });
+            state.Tasks.Add(new WorkItem { Title = "稍后完成", CompletedUtc = today.AddHours(10).ToUniversalTime() });
+            store.Save(state);
+
+            var window = new MainWindow(store, store.Load());
+            window.Show();
+            Check(window.OpenSummary(today.AddDays(-1), false) && Find<SummaryEditor>(window, "总结正文").ReadMarkdown() == "",
+                "An empty past daily report stays blank.");
+            Check(window.OpenSummary(today, true) && Find<SummaryEditor>(window, "总结正文").ReadMarkdown() == "",
+                "An empty weekly report stays blank.");
+            window.OpenSummary(today, false);
+            var editor = Find<SummaryEditor>(window, "总结正文");
+            Check(editor.ReadMarkdown() == "- 当天完成 \\[评审\\]\n- 稍后完成", "An empty daily report lists only today's completed tasks, ordered by completion time.");
+            Check(window.HasUnsavedSummary && store.Load().FindSummary(today, false) == null, "Prefilled text is an unsaved draft.");
+
+            SetBody(editor, "我写的总结");
+            Check(window.OpenSummary(today, false) && editor.ReadMarkdown() == "我写的总结", "Reopening the same editor leaves handwritten text intact.");
+            Click(Descendants<Button>(window).Single(button => button.Content as string == "保存总结"));
+            window.OpenSummary(today, true);
+            window.OpenSummary(today, false);
+            editor = Find<SummaryEditor>(window, "总结正文");
+            Check(editor.ReadMarkdown() == "我写的总结", "A saved report stays intact on reload.");
+
+            SetBody(editor, "");
+            var pixel = BitmapSource.Create(1, 1, 96, 96, PixelFormats.Bgra32, null, new byte[] { 160, 80, 40, 255 }, 4);
+            editor.InsertImage(pixel);
+            string imageOnly = editor.ReadMarkdown();
+            Click(Descendants<Button>(window).Single(button => button.Content as string == "保存总结"));
+            window.OpenSummary(today, true);
+            window.OpenSummary(today, false);
+            Check(SummaryImage.Reference.IsMatch(imageOnly) && Find<SummaryEditor>(window, "总结正文").ReadMarkdown() == imageOnly,
+                "A report containing only an image is not considered blank.");
             window.Close();
         }
 

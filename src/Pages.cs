@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using Microsoft.Win32;
@@ -289,6 +290,12 @@ namespace WorkDesk
             var prior = state.FindSummary(summaryDate, summaryWeekly);
             summaryInput = new SummaryEditor(prior, Banner) { Style = Ui.Style("SummarySurface") };
             savedSummary = summaryInput.ReadMarkdown();
+            if (!summaryWeekly && summaryDate == DateTime.Today && String.IsNullOrWhiteSpace(savedSummary))
+            {
+                var completed = MarkdownExport.CompletedItems(state.Tasks, summaryDate);
+                if (completed.Length > 0)
+                    new TextRange(summaryInput.Document.ContentStart, summaryInput.Document.ContentEnd).Text = completed;
+            }
             var toolbar = new DockPanel { Margin = new Thickness(0, 16, 0, 6) };
             var paste = Ui.Button("粘贴图片", delegate { summaryInput.PasteImage(true); }, "Quiet");
             paste.ToolTip = "也可以在正文中按 Ctrl+V 粘贴剪贴板截图";

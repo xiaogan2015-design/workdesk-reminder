@@ -25,6 +25,14 @@ namespace WorkDesk
             return "# " + SummaryTitle(weekly, date) + "\n\n" + WithFinalNewline(body);
         }
 
+        public static string CompletedItems(IEnumerable<WorkItem> items, DateTime date)
+        {
+            return String.Join("\n", items
+                .Where(item => item.CompletedUtc.HasValue && item.CompletedUtc.Value.ToLocalTime().Date == date.Date)
+                .OrderBy(item => item.CompletedUtc)
+                .Select(item => "- " + Escape(Normalize(item.Title).Replace('\n', ' '))));
+        }
+
         public static string Archive(WorkState state, DateTimeOffset now)
         {
             var output = new StringBuilder("# 待办笔记备份\n\n导出日期：");
