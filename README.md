@@ -4,13 +4,15 @@
 
 ## 下载
 
-[下载待办笔记 v1.6.1](./release/WorkDesk-v1.6.1.exe?raw=true)
+[下载待办笔记 v1.7.0](./release/WorkDesk-v1.7.0.exe?raw=true)
+
+当前版本的单文件 EXE **小于 200 KB**，实测为 **174,080 字节**。
 
 下载后双击 EXE，即可在装有 .NET Framework 4.8 或 4.8.1 的 Windows 10／11 上运行。更新前请先从托盘退出旧版，再打开新版。
 
-SHA-256：`ce878b651bfd17b8f16e942610e7baad9a58803455f621fb0ec08af40be6cf98`
+SHA-256：`be3e597c607225e3b4af724fb1bdc39282507a94ff67e699a7a35cf9b6ffd3d5`
 
-[查看 v1.6.1 的改动](./CHANGELOG.md#v161)
+[查看 v1.7.0 的改动](./CHANGELOG.md#v170)
 
 ## 界面预览
 
@@ -24,6 +26,14 @@ SHA-256：`ce878b651bfd17b8f16e942610e7baad9a58803455f621fb0ec08af40be6cf98`
 
 ![事项删除确认框](docs/images/delete-prompt.png)
 
+### 工作规划
+
+从待办中选最多三项作为今日重点，支持调序、移出和勾选完成。工作台显示当天的重点。四象限按重要性和紧急程度手动分类，可把筛选结果直接加入今日重点。
+
+![今日重点的三项任务与调整顺序按钮](docs/images/focus-planner.png)
+
+![四象限筛选及事项分类](docs/images/quadrant-planner.png)
+
 ### 事项归档
 
 独立的归档页保留事项状态、时间及备注，可将归档事项恢复到工作台。
@@ -35,6 +45,10 @@ SHA-256：`ce878b651bfd17b8f16e942610e7baad9a58803455f621fb0ec08af40be6cf98`
 按日或周写总结，支持粘贴截图。正文和历史区会随窗口拉伸和最大化而扩大，右侧可以切换记录或勾选导出。
 
 ![工作总结中的截图、历史记录和导出入口](docs/images/summary.png)
+
+右侧「记录日历」可切换月览和年览。紫色日期已有记录，点年览里的月份可展开，再点日期打开对应日报或周报。周报标在该周的周一。
+
+![工作总结记录日历的全年预览](docs/images/report-calendar.png)
 
 离开未保存的总结时，可以继续编辑、不保存并离开，或保存并离开。
 
@@ -70,7 +84,7 @@ SHA-256：`ce878b651bfd17b8f16e942610e7baad9a58803455f621fb0ec08af40be6cf98`
 
 ### 本地数据
 
-已保存的记录位于 `%LOCALAPPDATA%\WorkDesk\state.json`。设置页支持导出完整 JSON 备份，以及便于阅读和分享的 Markdown、网页或压缩包。完整 JSON 备份包含事项及归档设置、总结及图片、提醒设置、提示记录和每日检查清单进度。
+已保存的记录位于 `%LOCALAPPDATA%\WorkDesk\state.json`。按 `Win+R` 输入 `%LOCALAPPDATA%\WorkDesk` 可打开目录，也可以在「设置 → 托盘与本地数据」查看并复制完整路径。完整 JSON 备份包含事项、规划、归档设置、总结及图片、提醒设置和每日检查清单进度。设置页也可导出 Markdown、网页或压缩包。
 
 手动恢复完整 JSON 备份时，先退出待办笔记并另存现有数据文件，再把选定的备份复制为 `%LOCALAPPDATA%\WorkDesk\state.json` 并重新打开应用。
 

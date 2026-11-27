@@ -16,7 +16,7 @@ namespace WorkDesk
     {
         private const string ReportFormats = "Markdown（内嵌图片） (*.md)|*.md|网页（内嵌图片） (*.html)|*.html|Markdown 和图片压缩包 (*.zip)|*.zip";
         private const string DefaultFontChoice = "系统默认字体";
-        private enum DeskPage { Desk, Archive, Summary, Settings, Help }
+        private enum DeskPage { Desk, Archive, Summary, Settings, Help, Planning }
         private static readonly string[] Weekdays = { "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六" };
         private DeskPage page;
         private StackPanel archiveRows;
@@ -43,17 +43,21 @@ namespace WorkDesk
             var desk = Element<Button>("DeskNav");
             var archive = Element<Button>("ArchiveNav");
             var summary = Element<Button>("SummaryNav");
+            var planning = Element<Button>("PlanningNav");
             var settings = Element<Button>("SettingsNav");
             AutomationProperties.SetName(desk, "工作台");
             AutomationProperties.SetName(archive, "事项归档");
             AutomationProperties.SetName(summary, "工作总结");
+            AutomationProperties.SetName(planning, "工作规划");
             AutomationProperties.SetName(settings, "设置");
             desk.Click += delegate { OpenWorkbench(false); };
             archive.Click += delegate { OpenArchive(); };
             summary.Click += delegate { if (page != DeskPage.Summary) OpenSummary(DateTime.Today, false); };
+            planning.Click += delegate { OpenPlanning(false); };
             settings.Click += delegate { OpenSettings(); };
             Element<Button>("HelpButton").Click += delegate { OpenHelp(); };
             Element<Button>("TodaySummary").Click += delegate { OpenSummary(DateTime.Today, false); };
+            Element<Button>("OpenFocus").Click += delegate { OpenPlanning(true); };
             Element<Button>("OpenSettings").Click += delegate { OpenSettings(); };
             Element<Button>("CopyPlan").Click += delegate { CopyMarkdown(MarkdownExport.Plan(state, DateTimeOffset.Now)); };
             Element<Button>("ExportPlan").Click += delegate {
@@ -92,6 +96,7 @@ namespace WorkDesk
 
         private void RefreshSideCards(DateTime today)
         {
+            RefreshFocusPreview(today);
             bool dailySaved = state.FindSummary(today, false) != null;
             Element<TextBlock>("SummaryStatus").Text = dailySaved ? "今日日报已保存。" : "今日日报尚未记录。";
             Element<Button>("TodaySummary").Content = dailySaved ? "查看今日日报  →" : "写今日日报  →";
@@ -159,6 +164,7 @@ namespace WorkDesk
         {
             if (page == DeskPage.Archive) RefreshArchivedTasks();
             if (page == DeskPage.Desk) RefreshDashboard();
+            if (page == DeskPage.Planning) RefreshPlanning(DateTimeOffset.Now);
         }
 
         private void OpenSettings(bool showArchiveSettings = false)
@@ -180,6 +186,7 @@ namespace WorkDesk
             Element<Button>("DeskNav").Style = Ui.Style(next == DeskPage.Desk ? "ActiveNav" : "Nav");
             Element<Button>("ArchiveNav").Style = Ui.Style(next == DeskPage.Archive ? "ActiveNav" : "Nav");
             Element<Button>("SummaryNav").Style = Ui.Style(next == DeskPage.Summary ? "ActiveNav" : "Nav");
+            Element<Button>("PlanningNav").Style = Ui.Style(next == DeskPage.Planning ? "ActiveNav" : "Nav");
             Element<Button>("SettingsNav").Style = Ui.Style(next == DeskPage.Settings ? "ActiveNav" : "Nav");
             Element<Button>("HelpButton").Style = next == DeskPage.Help ? Ui.Style("Quiet") : (Style)TryFindResource(typeof(Button));
             Element<StackPanel>("Dashboard").Visibility = next == DeskPage.Desk ? Visibility.Visible : Visibility.Collapsed;
@@ -342,6 +349,9 @@ namespace WorkDesk
             summaryLayout.Children.Add(Ui.Card(form));
 
             var history = new DockPanel();
+            var calendar = BuildReportCalendar();
+            DockPanel.SetDock(calendar, Dock.Top);
+            history.Children.Add(calendar);
             var historyHeader = new StackPanel();
             historyHeader.Children.Add(Ui.Text(summaryWeekly ? "周报历史" : "日报历史", "SectionTitle"));
             selectExportButton = Ui.Button("勾选导出", delegate { ExportSelectedSummaries(); });
@@ -388,6 +398,7 @@ namespace WorkDesk
 
         private void RefreshHistory()
         {
+            RefreshReportCalendar();
             selectExportButton.IsEnabled = state.Summaries.Count != 0;
             historyRows.Children.Clear();
             foreach (var summary in state.Summaries.Where(s => s.Weekly == summaryWeekly).OrderByDescending(s => s.Period))
@@ -483,6 +494,8 @@ namespace WorkDesk
             var hint = Ui.Text("关闭窗口后，待办笔记会留在系统托盘。备份文件可以另存到你选择的位置。", "Hint");
             hint.Margin = new Thickness(0, 9, 0, 8);
             local.Children.Add(hint);
+            Ui.Label(local, "数据文件位置", new TextBox { Text = store.FilePath, IsReadOnly = true, TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 10) });
             var backup = Ui.Button("导出全部备份", delegate { ExportBackup(); });
             backup.HorizontalAlignment = HorizontalAlignment.Left;
             local.Children.Add(backup);

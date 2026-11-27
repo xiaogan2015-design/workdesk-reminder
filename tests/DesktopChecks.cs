@@ -54,7 +54,7 @@ namespace WorkDesk
             Check(window.Title == "待办笔记 · WorkDesk" && Descendants<TextBlock>(window).Any(block => block.Text == "待办笔记"),
                 "The window title and sidebar show the current app name.");
             var sidebar = window.Element<Border>("Sidebar");
-            Check(Descendants<Button>(sidebar).Select(AutomationProperties.GetName).SequenceEqual(new[] { "工作台", "工作总结", "事项归档", "设置" }),
+            Check(Descendants<Button>(sidebar).Select(AutomationProperties.GetName).SequenceEqual(new[] { "工作台", "工作总结", "工作规划", "事项归档", "设置" }),
                 "The sidebar places the archive immediately above Settings.");
             var add = window.Element<Button>("NewTask");
             var rows = window.Element<StackPanel>("TaskRows");
@@ -126,6 +126,7 @@ namespace WorkDesk
             CheckTaskArchiving(store);
             CheckHelpPage(store);
             CheckDailySummaryPrefill(store);
+            CheckPlanningAndCalendar(store);
         }
 
         private static void CheckHelpPage(StateStore store)
@@ -592,6 +593,60 @@ namespace WorkDesk
         }
 
         private static void Click(Button button) { button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)); }
+
+        private static void CheckPlanningAndCalendar(StateStore store)
+        {
+            var today = DateTime.Today;
+            var first = new DateTime(today.Year, today.Month, 1);
+            var other = first == today ? first.AddDays(1) : first;
+            var state = new WorkState();
+            foreach (var name in new[] { "整理发布记录", "补充验收清单", "评审反馈", "下周安排" }) state.Tasks.Add(new WorkItem { Title = name });
+            state.SetSummary(today, false, "今日记录", DateTime.UtcNow);
+            state.SetSummary(other, false, "另一篇日报", DateTime.UtcNow);
+            state.SetSummary(today, true, "本周记录", DateTime.UtcNow);
+            store.Save(state);
+
+            var window = new MainWindow(store, store.Load());
+            window.Show();
+            Click(window.Element<Button>("OpenFocus"));
+            var page = window.Element<ContentControl>("OtherPage");
+            for (int i = 0; i < 3; i++) Click(Descendants<Button>(page).Single(button => button.Content as string == "加入今日重点"));
+            Check(store.Load().FocusItems(today).Select(item => item.Title).SequenceEqual(new[] { "整理发布记录", "补充验收清单", "评审反馈" }) &&
+                !Descendants<Button>(page).Single(button => button.Content as string == "加入今日重点").IsEnabled,
+                "The planner saves three ordered focus tasks and disables the fourth selection.");
+            Click(Find<Button>(page, "上移：补充验收清单"));
+            Check(store.Load().FocusItems(today).First().Title == "补充验收清单", "Focus order is saved when moved.");
+            Find<CheckBox>(page, "标记完成：补充验收清单").IsChecked = true;
+            Check(store.Load().FocusItems(today).First().CompletedUtc.HasValue, "Completed focus tasks remain visible today.");
+            Click(Find<Button>(page, "移出重点：评审反馈"));
+            Click(Descendants<Button>(page).Single(button => button.Content as string == "四象限"));
+            Find<ComboBox>(page, "分类：下周安排").SelectedIndex = (int)TaskQuadrant.Schedule;
+            Click(Find<Button>(page, "重要不紧急"));
+            Check(store.Load().Tasks.Single(item => item.Quadrant == TaskQuadrant.Schedule).Title == "下周安排" &&
+                Descendants<ComboBox>(page).Count() == 1, "A task is moved and shown by its saved quadrant.");
+            Click(Descendants<Button>(page).Single(button => button.Content as string == "加入今日重点"));
+            Check(store.Load().FocusItems(today).Last().Title == "下周安排", "Quadrant results can become today's focus.");
+            Click(window.Element<Button>("DeskNav"));
+            Check(Descendants<TextBlock>(window.Element<StackPanel>("FocusPreview")).Any(label => label.Text.Contains("下周安排")) &&
+                store.Load().FocusItems(today.AddDays(1)).Length == 0, "The workbench previews the current date focus only.");
+
+            window.OpenSummary(today, false);
+            Click(Find<Button>(page, "按年查看记录"));
+            Click(Find<Button>(page, "查看 " + today.Month + "月，已记录 2 篇"));
+            var key = WorkState.PeriodKey(other, false);
+            SetBody(Find<SummaryEditor>(page, "总结正文"), "我的未保存内容");
+            RespondToSummaryDialog(window, delegate { Click(Find<Button>(page, "打开日报 " + key)); }, null);
+            Check(Find<SummaryEditor>(page, "总结正文").ReadMarkdown() == "我的未保存内容", "Canceling a calendar jump preserves a draft.");
+            RespondToSummaryDialog(window, delegate { Click(Find<Button>(page, "打开日报 " + key)); }, "不保存并离开");
+            Check(Find<SummaryEditor>(page, "总结正文").ReadMarkdown() == "另一篇日报", "A highlighted calendar day opens its saved daily report.");
+            window.OpenSummary(today, true);
+            Check(Find<Button>(page, "打开周报 " + WorkState.PeriodKey(today, true)) != null &&
+                !Descendants<Button>(page).Any(button => AutomationProperties.GetName(button).StartsWith("打开日报 ")),
+                "Weekly calendars highlight saved reports at their Monday dates only.");
+            Click(window.Element<Button>("SettingsNav"));
+            Check(Find<TextBox>(page, "数据文件位置").Text == store.FilePath, "Settings shows the actual local state file path.");
+            window.Close();
+        }
 
         private static void Check(bool condition, string message)
         {

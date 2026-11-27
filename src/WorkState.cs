@@ -9,6 +9,8 @@ using System.Text.RegularExpressions;
 
 namespace WorkDesk
 {
+    internal enum TaskQuadrant { Unclassified, DoNow, Schedule, Delegate, Reduce }
+
     [DataContract]
     internal sealed class WorkItem
     {
@@ -22,6 +24,7 @@ namespace WorkDesk
         [DataMember] public bool ReminderShown;
         [DataMember(EmitDefaultValue = false)] public DateTime? ArchivedUtc;
         [DataMember(EmitDefaultValue = false)] public bool AutoArchivePaused;
+        [DataMember(EmitDefaultValue = false)] public TaskQuadrant Quadrant;
 
         public WorkItem Copy() { return (WorkItem)MemberwiseClone(); }
 
@@ -180,6 +183,8 @@ namespace WorkDesk
         [DataMember(EmitDefaultValue = false)] public ArchiveSettings Archiving = new ArchiveSettings();
         [DataMember] public string LastDailyReminder;
         [DataMember] public string LastWeeklyReminder;
+        [DataMember(EmitDefaultValue = false)] private string FocusDate;
+        [DataMember(EmitDefaultValue = false)] private string[] FocusIds;
         [DataMember(EmitDefaultValue = false)] private string DailyChecklistDate;
         [DataMember(EmitDefaultValue = false)] private bool[] DailyChecklistSteps;
 
@@ -211,6 +216,22 @@ namespace WorkDesk
         {
             var period = PeriodKey(date, weekly);
             return Summaries.Find(s => s.Weekly == weekly && s.Period == period);
+        }
+
+        public const int FocusLimit = 3;
+
+        public WorkItem[] FocusItems(DateTime day)
+        {
+            if (FocusDate != PeriodKey(day, false) || FocusIds == null) return new WorkItem[0];
+            return FocusIds.Distinct(StringComparer.Ordinal)
+                .Select(id => Tasks.Find(item => item.Id == id && !item.ArchivedUtc.HasValue))
+                .Where(item => item != null).Take(FocusLimit).ToArray();
+        }
+
+        public void SetFocus(DateTime day, IEnumerable<string> ids)
+        {
+            FocusDate = PeriodKey(day, false);
+            FocusIds = ids.Distinct(StringComparer.Ordinal).Take(FocusLimit).ToArray();
         }
 
         public void SetSummary(DateTime date, bool weekly, string text, DateTime updatedUtc, List<SummaryImage> images = null)
@@ -288,9 +309,12 @@ namespace WorkDesk
 
             var taskIds = new HashSet<string>();
             foreach (var item in Tasks)
+            {
                 if (item == null || String.IsNullOrEmpty(item.Id) || !taskIds.Add(item.Id) ||
                     String.IsNullOrWhiteSpace(item.Title) || item.LeadMinutes < 0 || item.LeadMinutes > WorkItem.MaxLead)
                     throw new InvalidDataException("Invalid WorkDesk task.");
+                if (!Enum.IsDefined(typeof(TaskQuadrant), item.Quadrant)) item.Quadrant = TaskQuadrant.Unclassified;
+            }
 
             var summaryKeys = new HashSet<string>();
             foreach (var summary in Summaries)

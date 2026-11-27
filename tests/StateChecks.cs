@@ -114,6 +114,8 @@ internal static class StateChecks
             Check(loaded.Archiving.CompletedDays == 0 && loaded.Archiving.OverdueDays == 0 && loaded.Tasks.All(t => !t.ArchivedUtc.HasValue),
                 "Legacy files keep both archive rules disabled and their tasks active.");
             Check(loaded.Tasks.Any(t => t.Title == upcoming.Title) && !loaded.CollectReminders(now).Daily, "Round-trip Chinese text and reminder deduplication");
+            Check(loaded.Tasks.All(t => t.Quadrant == TaskQuadrant.Unclassified) && loaded.FocusItems(today).Length == 0,
+                "Older tasks start unclassified and no focus entries are inferred.");
             Check(loaded.Tasks.Single(t => t.Id == upcoming.Id).DueUtc == item.DueUtc, "Round-trip UTC timestamps");
             store.Save(state);
             Check(new StateStore(folder).Load().FindSummary(today, true).Text == "本周工作已更新", "Round-trip weekly summary");

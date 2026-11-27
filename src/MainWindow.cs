@@ -78,6 +78,7 @@ namespace WorkDesk
             if (page == DeskPage.Desk) RefreshDashboard();
             else Element<TextBlock>("DateLabel").Text = now.ToString("M月d日 dddd", Chinese);
             if (page == DeskPage.Help && checklistDay != now.Date) RefreshHelpChecklist(now.Date);
+            if (page == DeskPage.Planning && planningDay != now.Date) RefreshPlanning(now);
         }
 
         internal void Banner(string message)
@@ -258,7 +259,7 @@ namespace WorkDesk
             if (item == null) return;
             item.SetCompletion(completed ? (DateTime?)DateTime.UtcNow : null);
             if (Commit(next)) Banner(completed ? "已记录完成时间。" : "已恢复为待办。");
-            RefreshDashboard();
+            RefreshTaskViews();
         }
 
         private void RestoreTask(string id)
@@ -298,7 +299,7 @@ namespace WorkDesk
             }
             if (!Commit(next, true)) return false;
             Banner(result == null ? "已删除事项。" : "事项已保存。");
-            RefreshDashboard();
+            RefreshTaskViews();
             return true;
         }
     }
