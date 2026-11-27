@@ -12,7 +12,7 @@ namespace WorkDesk
     internal sealed partial class MainWindow : Window
     {
         private static readonly CultureInfo Chinese = CultureInfo.GetCultureInfo("zh-CN");
-        private readonly StateStore store;
+        private StateStore store;
         private readonly Grid shell;
         private WorkState state;
         private TaskFilter filter;
@@ -265,9 +265,8 @@ namespace WorkDesk
         private void RestoreTask(string id)
         {
             var next = state.Copy();
-            var item = next.Tasks.Find(t => t.Id == id && t.ArchivedUtc.HasValue);
-            if (item == null) return;
-            item.RestoreFromArchive();
+            try { if (!next.RestoreArchivedTask(id, archiveMonthPicker.SelectedItem as string)) return; }
+            catch (Exception ex) { Banner("无法读取归档事项：" + ex.Message); return; }
             if (!Commit(next)) return;
             RefreshArchivedTasks();
             Banner("事项已恢复到工作台。");

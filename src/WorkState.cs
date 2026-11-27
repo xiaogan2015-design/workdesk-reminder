@@ -71,9 +71,30 @@ namespace WorkDesk
     {
         [DataMember] public bool Weekly;
         [DataMember] public string Period;
-        [DataMember] public string Text;
         [DataMember] public DateTime UpdatedUtc;
-        [DataMember(EmitDefaultValue = false)] public List<SummaryImage> Images;
+        [DataMember(Name = "Text", EmitDefaultValue = false)] private string text;
+        [DataMember(Name = "Images", EmitDefaultValue = false)] private List<SummaryImage> images;
+        [DataMember(EmitDefaultValue = false)] public string BodyId;
+        internal Lazy<WorkSummary> Body;
+
+        public string Text { get { return Body == null ? text : Body.Value.text; } set { text = value; } }
+        public List<SummaryImage> Images { get { return Body == null ? images : Body.Value.images; } set { images = value; } }
+
+        internal void Validate(bool indexed)
+        {
+            if (BodyId != null)
+            {
+                if (!indexed || !StateStore.IsFileId(BodyId) || text != null || images != null)
+                    throw new InvalidDataException("Invalid WorkDesk summary index.");
+                return;
+            }
+            if (String.IsNullOrWhiteSpace(text)) throw new InvalidDataException("Invalid WorkDesk summary.");
+            if (images == null) return;
+            var ids = new HashSet<string>();
+            foreach (var image in images)
+                if (image == null || !image.IsValid(indexed) || !ids.Add(image.Id) || !text.Contains(image.Marker))
+                    throw new InvalidDataException("Invalid WorkDesk summary image.");
+        }
     }
 
     [DataContract]
@@ -85,20 +106,53 @@ namespace WorkDesk
         public static readonly Regex Reference = new Regex(@"!\[截图\]\(workdesk-image:([0-9a-f]{32})\)", RegexOptions.CultureInvariant);
 
         [DataMember] public string Id;
-        [DataMember] public string Png;
         [DataMember(EmitDefaultValue = false)] public bool AlphaChecked;
+        [DataMember(EmitDefaultValue = false)] public string FileId;
+        private string png;
+        private bool embed;
+        internal string ImagePath;
+
+        [DataMember(Name = "Png", EmitDefaultValue = false)]
+        private string InlinePng { get { return embed ? Png : png; } set { png = value; } }
+
+        public string Png { get { return ImagePath == null ? png : Convert.ToBase64String(ReadPng()); } set { png = value; } }
 
         public string Marker { get { return "![截图](workdesk-image:" + Id + ")"; } }
-        public byte[] ReadPng() { return Convert.FromBase64String(Png); }
-
-        public bool IsValid()
+        public byte[] ReadPng()
         {
-            Guid id;
-            if (!Guid.TryParseExact(Id, "N", out id) || id.ToString("N") != Id ||
-                String.IsNullOrEmpty(Png) || Png.Length > MaxBytes / 3 * 4) return false;
-            byte[] png;
-            try { png = ReadPng(); }
+            if (ImagePath == null) return Convert.FromBase64String(png);
+            using (var input = File.OpenRead(ImagePath))
+            {
+                if (input.Length < 24 || input.Length > MaxBytes) throw new InvalidDataException("图片文件大小无效。");
+                var bytes = new byte[(int)input.Length];
+                int offset = 0;
+                while (offset < bytes.Length)
+                {
+                    int count = input.Read(bytes, offset, bytes.Length - offset);
+                    if (count == 0) throw new EndOfStreamException();
+                    offset += count;
+                }
+                if (!ValidPng(bytes)) throw new InvalidDataException("图片文件格式无效。");
+                return bytes;
+            }
+        }
+
+        internal SummaryImage ForBackup()
+        {
+            return new SummaryImage { Id = Id, AlphaChecked = AlphaChecked, png = png, ImagePath = ImagePath, embed = true };
+        }
+
+        public bool IsValid(bool indexed = false)
+        {
+            if (!StateStore.IsFileId(Id)) return false;
+            if (FileId != null) return indexed && StateStore.IsImageFileId(FileId) && png == null;
+            if (String.IsNullOrEmpty(png) || png.Length > MaxBytes / 3 * 4) return false;
+            try { return ValidPng(ReadPng()); }
             catch (FormatException) { return false; }
+        }
+
+        private static bool ValidPng(byte[] png)
+        {
             return png.Length >= 24 && png.Take(PngHeader.Length).SequenceEqual(PngHeader) &&
                 ValidEdge(png, 16) && ValidEdge(png, 20);
         }
@@ -181,6 +235,8 @@ namespace WorkDesk
         [DataMember] public ReminderSettings Settings = new ReminderSettings();
         [DataMember] public AppearanceSettings Appearance = new AppearanceSettings();
         [DataMember(EmitDefaultValue = false)] public ArchiveSettings Archiving = new ArchiveSettings();
+        [DataMember(EmitDefaultValue = false)] public BackupSchedule Backup;
+        [DataMember(EmitDefaultValue = false)] internal List<ArchiveMonth> ArchiveMonths;
         [DataMember] public string LastDailyReminder;
         [DataMember] public string LastWeeklyReminder;
         [DataMember(EmitDefaultValue = false)] private string FocusDate;
@@ -246,7 +302,8 @@ namespace WorkDesk
 
         public IEnumerable<WorkItem> FilterTasks(TaskFilter filter, DateTimeOffset now)
         {
-            if (filter == TaskFilter.Archived) return Tasks.Where(t => t.ArchivedUtc.HasValue).OrderByDescending(t => t.ArchivedUtc);
+            if (filter == TaskFilter.Archived)
+                return Tasks.Where(t => t.ArchivedUtc.HasValue).Concat(ArchivedTasks()).OrderByDescending(t => t.ArchivedUtc);
             var active = Tasks.Where(t => !t.ArchivedUtc.HasValue);
             if (filter == TaskFilter.Completed)
                 return active.Where(t => t.CompletedUtc.HasValue).OrderByDescending(t => t.CompletedUtc);
@@ -261,6 +318,50 @@ namespace WorkDesk
         public void ArchiveAgedTasks(DateTime utc)
         {
             foreach (var item in Tasks.Where(t => Archiving.ShouldArchive(t, utc))) item.ArchivedUtc = utc;
+        }
+
+        internal IEnumerable<WorkItem> ArchivedTasks()
+        {
+            return ArchiveMonths == null ? Enumerable.Empty<WorkItem>() : ArchiveMonths.SelectMany(month => month.Items.Value);
+        }
+
+        internal static string ArchiveMonthKey(WorkItem item)
+        {
+            return item.ArchivedUtc.Value.ToLocalTime().ToString("yyyy-MM", CultureInfo.InvariantCulture);
+        }
+
+        internal IEnumerable<string> ArchiveMonthKeys()
+        {
+            return (ArchiveMonths == null ? Enumerable.Empty<string>() : ArchiveMonths.Select(month => month.Month))
+                .Concat(Tasks.Where(task => task.ArchivedUtc.HasValue).Select(ArchiveMonthKey)).Distinct().OrderByDescending(key => key);
+        }
+
+        internal IEnumerable<WorkItem> ArchivedTasksIn(string key)
+        {
+            var segments = ArchiveMonths == null ? Enumerable.Empty<WorkItem>() :
+                ArchiveMonths.Where(part => part.Month == key).SelectMany(part => part.Items.Value);
+            return segments
+                .Concat(Tasks.Where(task => task.ArchivedUtc.HasValue && ArchiveMonthKey(task) == key))
+                .OrderByDescending(task => task.ArchivedUtc);
+        }
+
+        internal bool RestoreArchivedTask(string id, string key)
+        {
+            var item = Tasks.Find(task => task.Id == id && task.ArchivedUtc.HasValue);
+            if (item == null && ArchiveMonths != null)
+            {
+                int index = ArchiveMonths.FindIndex(part => part.Month == key && part.Items.Value.Any(task => task.Id == id));
+                if (index < 0) return false;
+                var month = ArchiveMonths[index];
+                var archived = month.Items.Value.Find(task => task.Id == id);
+                if (archived == null) return false;
+                item = archived.Copy();
+                ArchiveMonths[index] = new ArchiveMonth(month.Month, month.Items.Value.Where(task => task.Id != id).ToList());
+                Tasks.Add(item);
+            }
+            if (item == null) return false;
+            item.RestoreFromArchive();
+            return true;
         }
 
         public ReminderBatch CollectReminders(DateTimeOffset now)
@@ -285,17 +386,18 @@ namespace WorkDesk
             if (batch.Weekly) LastWeeklyReminder = PeriodKey(batch.Day, true);
         }
 
-        public WorkState Copy()
+        public WorkState Copy(bool copyTasks = true)
         {
             var copy = (WorkState)MemberwiseClone();
-            copy.Tasks = Tasks.Select(t => t.Copy()).ToList();
+            copy.Tasks = copyTasks ? Tasks.Select(t => t.Copy()).ToList() : new List<WorkItem>(Tasks);
             copy.Summaries = new List<WorkSummary>(Summaries);
+            if (ArchiveMonths != null) copy.ArchiveMonths = new List<ArchiveMonth>(ArchiveMonths);
             return copy;
         }
 
         public void Validate()
         {
-            if (Version != 1 || Tasks == null || Summaries == null || Settings == null ||
+            if ((Version != 1 && Version != 2) || Tasks == null || Summaries == null || Settings == null ||
                 Settings.DailyMinute < 0 || Settings.DailyMinute >= 1440 ||
                 Settings.WeeklyMinute < 0 || Settings.WeeklyMinute >= 1440 ||
                 !Enum.IsDefined(typeof(DayOfWeek), Settings.WeeklyDay))
@@ -307,102 +409,34 @@ namespace WorkDesk
             if (!ArchiveSettings.IsValidDayCount(Archiving.CompletedDays)) Archiving.CompletedDays = 0;
             if (!ArchiveSettings.IsValidDayCount(Archiving.OverdueDays)) Archiving.OverdueDays = 0;
 
-            var taskIds = new HashSet<string>();
-            foreach (var item in Tasks)
-            {
-                if (item == null || String.IsNullOrEmpty(item.Id) || !taskIds.Add(item.Id) ||
-                    String.IsNullOrWhiteSpace(item.Title) || item.LeadMinutes < 0 || item.LeadMinutes > WorkItem.MaxLead)
-                    throw new InvalidDataException("Invalid WorkDesk task.");
-                if (!Enum.IsDefined(typeof(TaskQuadrant), item.Quadrant)) item.Quadrant = TaskQuadrant.Unclassified;
-            }
+            if (Backup != null && !Backup.IsValid) Backup = null;
+            ValidateTasks(Tasks);
+            if (ArchiveMonths != null && (Version != 2 || ArchiveMonths.Any(month => month == null || !month.IsValid) ||
+                ArchiveMonths.Select(month => month.FileId).Distinct().Count() != ArchiveMonths.Count))
+                throw new InvalidDataException("Invalid WorkDesk archive index.");
 
             var summaryKeys = new HashSet<string>();
             foreach (var summary in Summaries)
             {
                 DateTime date;
-                if (summary == null || String.IsNullOrWhiteSpace(summary.Text) ||
+                if (summary == null ||
                     !DateTime.TryParseExact(summary.Period, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date) ||
                     summary.Period != PeriodKey(date, summary.Weekly) || !summaryKeys.Add(summary.Weekly + summary.Period))
                     throw new InvalidDataException("Invalid WorkDesk summary.");
-                if (summary.Images != null)
-                {
-                    var ids = new HashSet<string>();
-                    foreach (var image in summary.Images)
-                        if (image == null || !image.IsValid() || !ids.Add(image.Id) || !summary.Text.Contains(image.Marker))
-                            throw new InvalidDataException("Invalid WorkDesk summary image.");
-                }
+                summary.Validate(Version == 2);
             }
         }
-    }
 
-    internal sealed class StateStore
-    {
-        private readonly DataContractJsonSerializer serializer = new DataContractJsonSerializer(typeof(WorkState));
-        private readonly string path;
-        private bool recovered;
-
-        public StateStore(string directory) { path = Path.Combine(directory, "state.json"); }
-        public string FilePath { get { return path; } }
-        public bool Recovered { get { return recovered; } }
-
-        public WorkState Load()
+        internal static void ValidateTasks(IEnumerable<WorkItem> tasks)
         {
-            string backup = path + ".bak";
-            try { return Read(path); }
-            catch (FileNotFoundException) { if (!File.Exists(backup)) return new WorkState(); }
-            catch (DirectoryNotFoundException) { return new WorkState(); }
-            catch (InvalidDataException) { if (!File.Exists(backup)) throw; }
-            catch (SerializationException) { if (!File.Exists(backup)) throw; }
-            var state = Read(backup);
-            recovered = true;
-            return state;
-        }
-
-        private WorkState Read(string file)
-        {
-            using (var input = File.OpenRead(file))
+            var ids = new HashSet<string>();
+            foreach (var item in tasks)
             {
-                var state = serializer.ReadObject(input) as WorkState;
-                if (state == null) throw new InvalidDataException("WorkDesk data is empty.");
-                state.Validate();
-                foreach (var image in state.Summaries.Where(summary => summary.Images != null).SelectMany(summary => summary.Images))
-                    SummaryImageCodec.RepairLegacy(image);
-                return state;
+                if (item == null || String.IsNullOrEmpty(item.Id) || !ids.Add(item.Id) ||
+                    String.IsNullOrWhiteSpace(item.Title) || item.LeadMinutes < 0 || item.LeadMinutes > WorkItem.MaxLead)
+                    throw new InvalidDataException("Invalid WorkDesk task.");
+                if (!Enum.IsDefined(typeof(TaskQuadrant), item.Quadrant)) item.Quadrant = TaskQuadrant.Unclassified;
             }
-        }
-
-        public void Save(WorkState state)
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
-            WriteAtomic(path, path + ".tmp", recovered ? null : path + ".bak", output => serializer.WriteObject(output, state));
-            recovered = false;
-        }
-
-        public void BackUp(string destination, WorkState state)
-        {
-            WriteExport(destination, output => serializer.WriteObject(output, state));
-        }
-
-        public void WriteExport(string destination, Action<Stream> write)
-        {
-            destination = Path.GetFullPath(destination);
-            string livePath = Path.GetFullPath(path);
-            if (new[] { livePath, livePath + ".bak", livePath + ".tmp" }.Contains(destination, StringComparer.OrdinalIgnoreCase))
-                throw new IOException("请选择其他位置，避免覆盖待办笔记正在使用的数据文件。");
-            string temporary = Path.Combine(Path.GetDirectoryName(destination), ".workdesk-" + Guid.NewGuid().ToString("N") + ".tmp");
-            try { WriteAtomic(destination, temporary, null, write); }
-            finally { if (File.Exists(temporary)) File.Delete(temporary); }
-        }
-
-        private static void WriteAtomic(string target, string temporary, string backup, Action<Stream> write)
-        {
-            using (var output = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))
-            {
-                write(output);
-                output.Flush(true);
-            }
-            if (File.Exists(target)) File.Replace(temporary, target, backup);
-            else File.Move(temporary, target);
         }
     }
 }

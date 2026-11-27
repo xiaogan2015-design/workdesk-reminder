@@ -103,6 +103,7 @@ namespace WorkDesk
         {
             if (exiting) return;
             window.RefreshClock(now);
+            window.CheckAutomaticBackup(now);
             var current = window.State;
             var rules = current.Archiving;
             bool archiving = (rules.CompletedDays > 0 || rules.OverdueDays > 0) &&

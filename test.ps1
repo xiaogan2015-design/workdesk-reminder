@@ -9,7 +9,7 @@ $runner = Join-Path $output 'StateChecks.exe'
 $wpf = Join-Path $framework 'WPF'
 & (Join-Path $framework 'csc.exe') /nologo /utf8output /codepage:65001 /target:exe "/out:$runner" `
     /r:System.Runtime.Serialization.dll /r:System.IO.Compression.dll "/r:$wpf\WindowsBase.dll" "/r:$wpf\PresentationCore.dll" "/r:$framework\System.Xaml.dll" `
-    (Join-Path $PSScriptRoot 'src\WorkState.cs') (Join-Path $PSScriptRoot 'src\SummaryImageCodec.cs') `
+    (Join-Path $PSScriptRoot 'src\WorkState.cs') (Join-Path $PSScriptRoot 'src\StateStore.cs') (Join-Path $PSScriptRoot 'src\SummaryImageCodec.cs') `
     (Join-Path $PSScriptRoot 'src\MarkdownExport.cs') `
     (Join-Path $PSScriptRoot 'tests\StateChecks.cs')
 if ($LASTEXITCODE -ne 0) { throw 'State check compilation failed.' }

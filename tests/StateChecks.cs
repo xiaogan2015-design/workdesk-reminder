@@ -22,7 +22,7 @@ internal static class StateChecks
         try { Run(); return 0; }
         catch (Exception ex)
         {
-            Console.Error.WriteLine("{0}: {1}", ex.GetType().FullName, ex.Message);
+            Console.Error.WriteLine(ex);
             Console.Error.WriteLine("Completed {0} assertions before failure.", assertions);
             return 1;
         }
@@ -200,6 +200,7 @@ internal static class StateChecks
             try { MarkdownExport.Write(store, store.FilePath, archive); throw new Exception("The live file cannot be exported over."); }
             catch (IOException) { Check(store.Load().Tasks.Count == 3, "Export cannot replace the live state file"); }
             CheckTaskArchiving(store, backup, now);
+            CheckStorageAndBackups(folder, image, today);
             CheckDailyChecklist(store, backup, today);
         }
         finally
@@ -213,9 +214,9 @@ internal static class StateChecks
             File.Delete(allFile);
             File.Delete(htmlFile);
             File.Delete(selectedZip);
-            File.Delete(backup.FilePath);
+            if (File.Exists(backup.FilePath)) File.Delete(backup.FilePath);
             if (Directory.Exists(Path.GetDirectoryName(backup.FilePath))) Directory.Delete(Path.GetDirectoryName(backup.FilePath));
-            if (Directory.Exists(folder)) Directory.Delete(folder);
+            if (Directory.Exists(folder) && !Directory.EnumerateFileSystemEntries(folder).Any()) Directory.Delete(folder);
         }
         Console.WriteLine("Passed {0} state and reminder checks.", assertions);
     }
@@ -293,5 +294,85 @@ internal static class StateChecks
             bgra.CopyPixels(pixels, bgra.PixelWidth * 4, 0);
             return pixels;
         }
+    }
+
+    private static void CheckStorageAndBackups(string folder, SummaryImage image, DateTime today)
+    {
+        var january = new DateTime(2026, 1, 31);
+        Check(new BackupSchedule { Cadence = BackupCadence.Weekly }.NextDate(january, today) == january.AddDays(7) &&
+            new BackupSchedule { Cadence = BackupCadence.Monthly }.NextDate(january, today) == new DateTime(2026, 2, 28),
+            "Weekly and monthly backups use local dates and handle short months.");
+        var interval = new BackupSchedule { Cadence = BackupCadence.Custom, Days = 9 };
+        Check(interval.NextDate(january, today) == january.AddDays(9) && interval.NextDate(null, today) == today.Date &&
+            !new BackupSchedule { Cadence = BackupCadence.Custom, Days = 0 }.IsValid &&
+            new BackupSchedule { Cadence = BackupCadence.Disabled }.NextDate(null, today) == null,
+            "Custom scheduling rejects zero days, runs the first backup immediately and can be disabled.");
+
+        var legacyStore = new StateStore(Path.Combine(folder, "legacy-data"));
+        Directory.CreateDirectory(legacyStore.DataDirectory);
+        var current = new WorkState { Backup = interval };
+        var active = new WorkItem { Title = "当前事项" };
+        var historic = new WorkItem { Title = "归档事项", ArchivedUtc = january.ToUniversalTime(), CompletedUtc = january.AddDays(-9).ToUniversalTime() };
+        current.Tasks.AddRange(new[] { active, historic });
+        current.SetSummary(today, false, "截图总结\n" + image.Marker, today.ToUniversalTime(),
+            new System.Collections.Generic.List<SummaryImage> { image });
+        new StateStore(folder).BackUp(legacyStore.FilePath, current);
+        var loaded = legacyStore.Load();
+        Check(loaded.Version == 1 && loaded.Tasks.Count == 2 && loaded.FindSummary(today, false).Images.Count == 1,
+            "Legacy single-file JSON restores tasks and images.");
+        legacyStore.Save(loaded);
+        var raw = File.ReadAllText(legacyStore.FilePath);
+        var reportFile = Directory.GetFiles(Path.Combine(legacyStore.DataDirectory, "reports")).Single();
+        var archiveFile = Directory.GetFiles(Path.Combine(legacyStore.DataDirectory, "archives")).Single();
+        Check(!raw.Contains("截图总结") && !raw.Contains("归档事项") && !raw.Contains(image.Png) &&
+            Directory.GetFiles(Path.Combine(legacyStore.DataDirectory, "images"), "*.png").Length == 1 &&
+            raw.Contains(active.Id) && archiveFile.Contains(WorkState.ArchiveMonthKey(historic)),
+            "The active JSON references report, image and archive files instead of embedding them.");
+
+        var split = legacyStore.Load();
+        var archivedMonth = split.ArchiveMonths.Single();
+        var report = split.FindSummary(today, false);
+        Check(!archivedMonth.Items.IsValueCreated && !report.Body.IsValueCreated, "Startup only reads history indexes.");
+        split.Tasks.Single().Title = "当前事项已改";
+        legacyStore.Save(split);
+        Check(!archivedMonth.Items.IsValueCreated && !report.Body.IsValueCreated &&
+            Directory.GetFiles(Path.GetDirectoryName(reportFile)).Single() == reportFile &&
+            Directory.GetFiles(Path.GetDirectoryName(archiveFile)).Single() == archiveFile,
+            "Editing an active task leaves stored history untouched and unloaded.");
+
+        legacyStore.WriteAutomaticBackup(today.Date, split);
+        var backupPath = Directory.GetFiles(legacyStore.BackupDirectory).Single();
+        var restoreStore = new StateStore(Path.Combine(folder, "restored-backup"));
+        Directory.CreateDirectory(restoreStore.DataDirectory);
+        File.Copy(backupPath, restoreStore.FilePath);
+        var recovered = restoreStore.Load();
+        Check(legacyStore.LatestAutomaticBackup() == today.Date && recovered.Tasks.Count == 2 &&
+            recovered.Tasks.Any(item => item.Id == historic.Id && item.ArchivedUtc == historic.ArchivedUtc) &&
+            recovered.FindSummary(today, false).Images.Single().Png == image.Png && recovered.Backup.Days == 9,
+            "The scheduled JSON alone restores the active task, history, original image and settings.");
+
+        var targetPath = Path.Combine(folder, "relocated-data");
+        var original = File.ReadAllText(legacyStore.FilePath);
+        WorkState moved;
+        var target = legacyStore.Relocate(targetPath, split, out moved);
+        var reopened = StateStore.Open(legacyStore.DataDirectory);
+        Check(File.ReadAllText(legacyStore.FilePath) == original && reopened.DataDirectory == target.DataDirectory &&
+            reopened.LatestAutomaticBackup() == today.Date && moved.FindSummary(today, false).Images.Single().Png == image.Png,
+            "Relocation keeps the source and previous backups intact and is remembered after restart.");
+        try { target.Relocate(legacyStore.DataDirectory, moved, out moved); throw new Exception("Migration overwrote a nonempty folder."); }
+        catch (IOException) { Check(StateStore.Open(legacyStore.DataDirectory).DataDirectory == targetPath, "A rejected migration keeps the previous location."); }
+        moved = reopened.Load();
+        Check(moved.RestoreArchivedTask(historic.Id, archivedMonth.Month), "An archived item can be restored from its month.");
+        reopened.Save(moved);
+        Check(reopened.Load().Tasks.Any(item => item.Id == historic.Id) && !reopened.Load().ArchiveMonthKeys().Any(),
+            "Restoration removes the archive index and preserves the active item.");
+        File.WriteAllText(reopened.FilePath, "invalid JSON");
+        var backupRecovery = StateStore.Open(legacyStore.DataDirectory);
+        Check(backupRecovery.Load().ArchivedTasksIn(archivedMonth.Month).Single().Id == historic.Id && backupRecovery.Recovered,
+            "The previous state file still references usable archive data after restoration.");
+        string absentPath = Path.Combine(folder, "unavailable");
+        File.WriteAllText(Path.Combine(legacyStore.DataDirectory, "data-directory.txt"), absentPath);
+        try { StateStore.Open(legacyStore.DataDirectory).Load(); throw new Exception("Unavailable locations cannot open with empty data."); }
+        catch (IOException) { Check(!Directory.Exists(absentPath), "An unavailable custom directory never starts with an empty state."); }
     }
 }

@@ -42,7 +42,7 @@ namespace WorkDesk
                 File.Delete(store.FilePath);
                 File.Delete(store.FilePath + ".bak");
                 File.Delete(store.FilePath + ".tmp");
-                if (Directory.Exists(folder)) Directory.Delete(folder);
+                if (Directory.Exists(folder) && !Directory.EnumerateFileSystemEntries(folder).Any()) Directory.Delete(folder);
             }
         }
 
@@ -644,7 +644,27 @@ namespace WorkDesk
                 !Descendants<Button>(page).Any(button => AutomationProperties.GetName(button).StartsWith("打开日报 ")),
                 "Weekly calendars highlight saved reports at their Monday dates only.");
             Click(window.Element<Button>("SettingsNav"));
-            Check(Find<TextBox>(page, "数据文件位置").Text == store.FilePath, "Settings shows the actual local state file path.");
+            Check(Find<TextBox>(page, "数据目录").Text == store.DataDirectory &&
+                Find<TextBox>(page, "自动备份目录").Text == store.BackupDirectory, "Settings displays both effective folders.");
+            var schedule = Find<ComboBox>(page, "自动备份频率");
+            Check(schedule.Items.Cast<string>().SequenceEqual(new[] { "关闭", "每周", "每月", "自定义天数" }),
+                "Settings offers weekly, monthly and custom backups.");
+            schedule.SelectedIndex = (int)BackupCadence.Custom;
+            var interval = Find<TextBox>(page, "间隔天数");
+            var saveBackup = Descendants<Button>(page).Single(button => button.Content as string == "保存备份设置");
+            interval.Text = "0";
+            Click(saveBackup);
+            Check(store.Load().Backup == null, "Invalid backup intervals do not change saved settings.");
+            interval.Text = "9";
+            Click(saveBackup);
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (!store.LatestAutomaticBackup().HasValue && DateTime.UtcNow < deadline)
+            {
+                window.Dispatcher.Invoke(DispatcherPriority.Background, new Action(delegate { }));
+                System.Threading.Thread.Sleep(15);
+            }
+            Check(store.Load().Backup.Days == 9 && store.LatestAutomaticBackup() == today,
+                "Saving a custom cadence persists the setting and runs a background backup.");
             window.Close();
         }
 

@@ -6,14 +6,16 @@
 
 - [build.ps1](./build.ps1) 直接调用 Windows 自带的 `csc.exe` 编译 `src/*.cs`。保持 C# 5 兼容，新增源码使用 UTF-8，沿用现有依赖。
 - [Program.cs](./src/Program.cs) 是启动入口，负责加载 XAML、单实例和 `--tray` 启动。[DesktopHost.cs](./src/DesktopHost.cs) 负责托盘、自动启动、提醒调度和弹窗。
-- [WorkState.cs](./src/WorkState.cs) 集中管理事项、总结、设置、筛选、提醒判断和本地存储。[MainWindow.cs](./src/MainWindow.cs) 负责事项界面和状态提交，[Pages.cs](./src/Pages.cs) 负责页面导航、总结与设置。
+- [WorkState.cs](./src/WorkState.cs) 管理事项、总结、筛选和提醒判断。[StateStore.cs](./src/StateStore.cs) 负责本地持久化、数据目录和备份文件。[MainWindow.cs](./src/MainWindow.cs) 负责事项界面和状态提交，[Pages.cs](./src/Pages.cs) 负责导航、总结与设置，[DataStoragePage.cs](./src/DataStoragePage.cs) 提供目录迁移和备份设置。
 - [Shell.xaml](./src/Shell.xaml) 定义主界面，[Theme.xaml](./src/Theme.xaml) 管理样式。[Editors.cs](./src/Editors.cs) 包含事项编辑和日期时间控件，[StatusTone.cs](./src/StatusTone.cs) 定义事项和提醒状态的配色。
 
 ## 数据与时间约定
 
-- 用户数据位于 `%LOCALAPPDATA%\WorkDesk\state.json`。当前 JSON 结构版本为 `1`。新增字段时验证旧文件缺字段的情况，例如外观设置、总结图片和图片修复标记。测试使用独立数据目录和样例，保护日常使用的数据。
+- 默认数据目录为 `%LOCALAPPDATA%\WorkDesk`。相同目录下的 `data-directory.txt` 记录用户选用的位置。迁移校验成功后再切换位置，原目录保留。自定义目录缺失必须提示，避免把不可用的目录当成空数据。测试使用独立数据目录和样例。
+- 正在使用的主文件为版本 `2`。归档事项按月分为多个独立片段，总结索引按需读取正文，图片单独存成 PNG。新版读取版本 `1` 的完整 JSON，首次保存再拆分。完整 JSON 导出仍使用版本 `1` 并包含历史和附件，可以单文件恢复。
 - 更新走 `state.Copy()` → 修改候选状态 → `MainWindow.Commit(next)`。保存成功后再替换界面状态。`Copy()` 深复制事项，仍共享总结对象、附件、提醒设置和外观设置。修改总结用 `SetSummary`，修改设置新建对象，避免候选状态的修改提前影响当前状态。
-- `StateStore.Save` 在同目录写入临时文件，再替换主文件并保留 `state.json.bak`。从备份恢复后的第一次保存要保留有效备份。导出沿用 `StateStore.WriteExport`，防止用户选中正式数据文件或其备份作为导出目标。
+- `StateStore.Save` 先写历史片段、总结和图片，再原子替换主文件，保留 `state.json.bak`。引用到的历史文件应能供旧快照和后台完整备份读取。从备份恢复后的第一次保存要保留有效备份。导出沿用 `StateStore.WriteExport`，保护应用使用的数据文件。
+- 自动备份沿用桌面计时器，在后台生成完整 JSON，文件在 `backups` 子目录。周期按上次成功备份的本地日期计算，失败可重试，未完成的临时文件不计入成功记录。
 - 事项截止、完成以及总结更新时间以 UTC 存储，显示和日期判断使用本地时间。日报按本地日期归档，周报按周一归档，键为 `(Weekly, Period)`，格式 `yyyy-MM-dd`。验证时间相关改动时覆盖截止边界、本地跨日和跨周。
 
 ## 托盘、提醒与事项列表
@@ -24,7 +26,7 @@
 
 ## 编辑器、图片与导出
 
-- [SummaryEditor.cs](./src/SummaryEditor.cs) 在 `RichTextBox` 中插入图片，正文保存 `workdesk-image:<id>` 标记，关联 PNG 保存在总结的 `Images` 字段。`ReadMarkdown` 读取当前正文及其中实际使用的图片。改编辑器时验证光标处粘贴、删除和撤销图片、保存后重开历史记录。
+- [SummaryEditor.cs](./src/SummaryEditor.cs) 在 `RichTextBox` 中插入图片，正文保存 `workdesk-image:<id>` 标记。`Images` 关联 PNG 文件，完整 JSON 备份内嵌 PNG。`ReadMarkdown` 读取当前正文及其中实际使用的图片。改编辑器时验证光标处粘贴、删除和撤销图片、保存后重开历史记录。
 - 缩略图呈白块时先查像素。部分 Windows 截图的 RGB 有内容，Alpha 却全为零。[SummaryImageCodec.cs](./src/SummaryImageCodec.cs) 在缩放前修复匹配这一特征的截图。旧附件加载时也尝试修复。混合透明度应保留，回归测试应检查 PNG 的像素和透明度。
 - [MarkdownExport.cs](./src/MarkdownExport.cs) 负责转换与写出。「复制 Markdown」和「导出当前篇」取当前编辑内容，可以包含未保存的修改。「勾选导出」由 [SummaryExportDialog.cs](./src/SummaryExportDialog.cs) 选择已保存的日报或周报。
 - Markdown 文件和剪贴板 Markdown 都使用 `data:image/png;base64,` 内嵌 PNG，复制后无需原目录。部分 Markdown 阅读器会限制 `data:` 图片。单文件 HTML 可在浏览器离线查看，正文按文本转义后显示。ZIP 内的 Markdown 通过相对路径引用同包 PNG，完整解压后可用。

@@ -9,8 +9,8 @@ using System.Windows.Markup;
 [assembly: AssemblyProduct("待办笔记")]
 [assembly: AssemblyDescription("Windows 工作待办与总结")]
 [assembly: System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.8", FrameworkDisplayName = ".NET Framework 4.8")]
-[assembly: AssemblyVersion("1.7.0.0")]
-[assembly: AssemblyFileVersion("1.7.0.0")]
+[assembly: AssemblyVersion("1.8.0.0")]
+[assembly: AssemblyFileVersion("1.8.0.0")]
 
 namespace WorkDesk
 {
@@ -19,7 +19,8 @@ namespace WorkDesk
         [STAThread]
         public static int Main(string[] args)
         {
-            var store = new StateStore(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WorkDesk"));
+            string settingsDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WorkDesk");
+            var store = new StateStore(settingsDirectory);
             try
             {
                 using (var mutex = new Mutex(false, @"Local\WorkDesk.Instance.v1"))
@@ -34,6 +35,7 @@ namespace WorkDesk
                     {
                         var application = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
                         LoadTheme(application);
+                        store = StateStore.Open(settingsDirectory);
                         var window = new MainWindow(store, store.Load());
                         application.MainWindow = window;
                         var registered = ThreadPool.RegisterWaitForSingleObject(activation, delegate {

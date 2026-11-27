@@ -21,6 +21,8 @@ namespace WorkDesk
         private DeskPage page;
         private StackPanel archiveRows;
         private TextBlock archiveCount;
+        private ComboBox archiveMonthPicker;
+        private bool updatingArchiveMonths;
         private Border archiveSettingsCard;
         private DateTime summaryDate;
         private DateTime summaryAnchor;
@@ -59,10 +61,8 @@ namespace WorkDesk
             Element<Button>("TodaySummary").Click += delegate { OpenSummary(DateTime.Today, false); };
             Element<Button>("OpenFocus").Click += delegate { OpenPlanning(true); };
             Element<Button>("OpenSettings").Click += delegate { OpenSettings(); };
-            Element<Button>("CopyPlan").Click += delegate { CopyMarkdown(MarkdownExport.Plan(state, DateTimeOffset.Now)); };
-            Element<Button>("ExportPlan").Click += delegate {
-                ExportMarkdown("事项清单-" + WorkState.PeriodKey(DateTime.Today, false), MarkdownExport.Plan(state, DateTimeOffset.Now));
-            };
+            Element<Button>("CopyPlan").Click += delegate { ExportPlan(true); };
+            Element<Button>("ExportPlan").Click += delegate { ExportPlan(false); };
             var pageScroll = Element<ScrollViewer>("PageScroll");
             pageScroll.ScrollChanged += delegate(object sender, ScrollChangedEventArgs e) {
                 if (!ReferenceEquals(e.OriginalSource, pageScroll) || e.ViewportHeightChange == 0) return;
@@ -124,6 +124,13 @@ namespace WorkDesk
                 summaryAnchor = date.Date;
                 return true;
             }
+            try
+            {
+                var record = state.FindSummary(period, weekly);
+                if (record != null && String.IsNullOrWhiteSpace(record.Text))
+                    throw new System.IO.InvalidDataException("总结正文无效。");
+            }
+            catch (Exception ex) { Banner("无法读取这篇总结：" + ex.Message); return false; }
             if (!CanLeaveSummary()) return false;
             summaryDate = period;
             summaryAnchor = date.Date;
@@ -144,7 +151,11 @@ namespace WorkDesk
             archiveCount.VerticalAlignment = VerticalAlignment.Center;
             header.Children.Add(archiveCount);
             content.Children.Add(header);
+            archiveMonthPicker = new ComboBox { Width = 132, HorizontalAlignment = HorizontalAlignment.Left, MaxDropDownHeight = 270 };
+            Ui.Label(content, "归档月份", archiveMonthPicker);
+            archiveMonthPicker.SelectionChanged += delegate { if (!updatingArchiveMonths) RenderArchivedMonth(); };
             archiveRows = new StackPanel();
+            archiveRows.Margin = new Thickness(0, 10, 0, 0);
             content.Children.Add(archiveRows);
             RefreshArchivedTasks();
             SetPage(DeskPage.Archive, "事项归档", Ui.Card(content));
@@ -152,12 +163,34 @@ namespace WorkDesk
 
         private void RefreshArchivedTasks()
         {
-            var now = DateTimeOffset.Now;
-            var items = state.FilterTasks(TaskFilter.Archived, now).ToArray();
-            archiveCount.Text = "已归档 · " + items.Length.ToString(Chinese) + " 项";
+            string selected = archiveMonthPicker.SelectedItem as string;
+            var months = state.ArchiveMonthKeys().ToArray();
+            updatingArchiveMonths = true;
+            archiveMonthPicker.ItemsSource = months;
+            archiveMonthPicker.IsEnabled = months.Length != 0;
+            archiveMonthPicker.SelectedItem = months.Contains(selected) ? selected : months.FirstOrDefault();
+            updatingArchiveMonths = false;
+            RenderArchivedMonth();
+        }
+
+        private void RenderArchivedMonth()
+        {
             archiveRows.Children.Clear();
-            if (items.Length == 0) archiveRows.Children.Add(Ui.Text("暂无归档事项。可在归档设置中启用自动归档。", "Hint"));
-            foreach (var item in items) archiveRows.Children.Add(TaskRow(item, now));
+            string month = archiveMonthPicker.SelectedItem as string;
+            archiveCount.Text = "已归档";
+            if (month == null)
+            {
+                archiveRows.Children.Add(Ui.Text("暂无归档事项。可在归档设置中启用自动归档。", "Hint"));
+                return;
+            }
+            try
+            {
+                var now = DateTimeOffset.Now;
+                var items = state.ArchivedTasksIn(month).ToArray();
+                archiveCount.Text += " · " + items.Length.ToString(Chinese) + " 项";
+                foreach (var item in items) archiveRows.Children.Add(TaskRow(item, now));
+            }
+            catch (Exception ex) { archiveRows.Children.Add(Ui.Text("无法读取该月归档。\n" + ex.Message, "Hint")); }
         }
 
         internal void RefreshTaskViews()
@@ -320,8 +353,12 @@ namespace WorkDesk
                 var images = new List<SummaryImage>();
                 string text = summaryInput.ReadMarkdown(images);
                 if (String.IsNullOrWhiteSpace(text)) { Banner("请先填写总结正文或粘贴图片。"); return; }
-                CopyMarkdown(MarkdownExport.WithEmbeddedImages(MarkdownExport.Summary(summaryWeekly, summaryDate, text), images),
-                    images.Count == 0 ? "已复制 Markdown。" : "已复制带图 Markdown。请在支持内嵌图片的工具中预览。");
+                try
+                {
+                    CopyMarkdown(MarkdownExport.WithEmbeddedImages(MarkdownExport.Summary(summaryWeekly, summaryDate, text), images),
+                        images.Count == 0 ? "已复制 Markdown。" : "已复制带图 Markdown。请在支持内嵌图片的工具中预览。");
+                }
+                catch (Exception ex) { Banner("复制失败：" + ex.Message); }
             });
             var export = Ui.Button("导出当前篇", delegate {
                 var images = new List<SummaryImage>();
@@ -469,9 +506,12 @@ namespace WorkDesk
             var reminderCard = Ui.Card(schedules);
             reminderCard.Margin = new Thickness(0, 12, 0, 0);
             panels.Children.Add(reminderCard);
+            var storage = BuildDataStorageCard();
+            storage.Margin = new Thickness(0, 12, 0, 0);
+            panels.Children.Add(storage);
 
             var local = new StackPanel();
-            local.Children.Add(Ui.Text("托盘与本地数据", "SectionTitle"));
+            local.Children.Add(Ui.Text("启动与托盘", "SectionTitle"));
             var startup = new CheckBox { Content = "登录 Windows 后启动待办笔记", Margin = new Thickness(0, 11, 0, 0), Style = Ui.Style("FormToggle") };
             try { startup.IsChecked = StartupRegistration.Enabled; }
             catch (Exception ex) { startup.IsEnabled = false; startup.ToolTip = ex.Message; }
@@ -491,17 +531,12 @@ namespace WorkDesk
             startup.Checked += changeStartup;
             startup.Unchecked += changeStartup;
             local.Children.Add(startup);
-            var hint = Ui.Text("关闭窗口后，待办笔记会留在系统托盘。备份文件可以另存到你选择的位置。", "Hint");
+            var hint = Ui.Text("关闭窗口后，待办笔记会留在系统托盘。", "Hint");
             hint.Margin = new Thickness(0, 9, 0, 8);
             local.Children.Add(hint);
-            Ui.Label(local, "数据文件位置", new TextBox { Text = store.FilePath, IsReadOnly = true, TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 10) });
-            var backup = Ui.Button("导出全部备份", delegate { ExportBackup(); });
-            backup.HorizontalAlignment = HorizontalAlignment.Left;
-            local.Children.Add(backup);
-            var backupCard = Ui.Card(local);
-            backupCard.Margin = new Thickness(0, 12, 0, 0);
-            panels.Children.Add(backupCard);
+            var trayCard = Ui.Card(local);
+            trayCard.Margin = new Thickness(0, 12, 0, 0);
+            panels.Children.Add(trayCard);
             return panels;
         }
 
@@ -616,6 +651,18 @@ namespace WorkDesk
         private void ExportMarkdown(string filename, string data)
         {
             ExportFile(filename, "Markdown 文件 (*.md)|*.md", dialog => MarkdownExport.Write(store, dialog.FileName, data));
+        }
+
+        private void ExportPlan(bool copy)
+        {
+            var now = DateTimeOffset.Now;
+            try
+            {
+                var markdown = MarkdownExport.Plan(state, now);
+                if (copy) CopyMarkdown(markdown);
+                else ExportMarkdown("事项清单-" + WorkState.PeriodKey(now.Date, false), markdown);
+            }
+            catch (Exception ex) { Banner("无法读取事项清单：" + ex.Message); }
         }
 
         private void ExportBackup()
